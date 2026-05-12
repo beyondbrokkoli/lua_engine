@@ -1,4 +1,3 @@
-AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/lua_engine
 $ ./boot.exe
 [C-CORE] Booting Headless Worker...
 [LUA-OS-THREAD] Booting Lua VM...
@@ -12,7 +11,7 @@ $ ./boot.exe
 [LUA] Window Surface Linked from Main Thread!
 [LUA] Hardware GPU Selected!
 [LUA] Logical Device Created!
-[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x01e470bd7de8
+[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x01c049166ea8
 [MEMORY] ReBAR Supported! Streaming directly to VRAM.
 [MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (256.00 MB)
 [SWAPCHAIN] Building the display chain...
@@ -22,20 +21,22 @@ $ ./boot.exe
 [COMPUTE] Compiling Swarm Intelligence...
 [COMPUTE] Swarm Pipeline Ready!
 [GRAPHICS] Building Reverse-Z Depth Buffer and Shader Modules...
-
-[VULKAN LAYER ENFORCER]
-SEVERITY: 4096
-MESSAGE: vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[0] SPIR-V (VK_SHADER_STAGE_VERTEX_BIT) has a push constant buffer Block with range [0, 96] which outside the VkPushConstantRange of [0, 64].
-The Vulkan spec states: If a push constant block is declared in a shader and layout is not VK_NULL_HANDLE, the block must be contained inside the push constant range in layout that matches the stage (https://docs.vulkan.org/spec/latest/chapters/pipelines.html#VUID-VkGraphicsPipelineCreateInfo-layout-10069)
-
 [GRAPHICS] Swarm Pipeline Successfully Compiled!
 [FACTORY] Forging Triple-Buffered Command Matrix...
 [RENDERER] Forging Synchronization Primitives...
 [LUA CO] Injecting 1,000,000 Particles into ReBAR Arena (SoA Layout)...
 [RENDERER] Executing Host-to-Device Memory Barrier...
 
-[LUA FATAL ERROR] main.lua:60: FATAL: FIBER CRASH -> .\renderer.lua:237: attempt to index global 'cmd_factory' (a nil value)
+[VULKAN LAYER ENFORCER]
+SEVERITY: 4096
+MESSAGE: vkCmdPipelineBarrier(): pMemoryBarriers[0].dstAccessMask (VK_ACCESS_2_TRANSFER_READ_BIT) is not supported by stage mask (VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT|VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).
+The Vulkan spec states: The dstAccessMask member of each element of pMemoryBarriers must only include access flags that are supported by one or more of the pipeline stages in dstStageMask, as specified in the table of supported access types (https://docs.vulkan.org/spec/latest/chapters/synchronization.html#VUID-vkCmdPipelineBarrier-dstAccessMask-02816)
+
+[RENDERER] VRAM Coherency Secured.
+[LUA CO] Injection Complete & Memory Barrier Flushed.
+[LUA CO] Render Fiber Weaving...
+[LUA IO] ESCAPE PRESSED. Executing Teardown...
 [LUA-OS-THREAD] VM Destroyed.
 
-
-AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/lua_engine
+[C-CORE] Shutdown triggered. Waiting for Lua VM...
+[C-CORE] Clean Exit.
