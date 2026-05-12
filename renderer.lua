@@ -1,7 +1,8 @@
--- renderer.lua
 local ffi = require("ffi")
 local bit = require("bit")
 local cmd_factory = require("command_factory")
+local math = require("math")
+
 -- ============================================================================
 -- ALIAS BRIDGE: Map KHR extension names to Core 1.3 definitions from parse.py
 -- ============================================================================
@@ -44,10 +45,11 @@ function Renderer.AllocateFrameState(vk, device, width, height)
     state.pImageIndex = ffi.new("uint32_t[1]")
     state.cmdBeginInfo = ffi.new("VkCommandBufferBeginInfo", { sType = 42 })
 
+    -- FIX: Compute-to-Vertex SSBO Coherency
     state.computeBarrier = ffi.new("VkMemoryBarrier", {
         sType = 46,
-        srcAccessMask = 32,
-        dstAccessMask = bit.bor(1, 512)
+        srcAccessMask = 64,  -- VK_ACCESS_SHADER_WRITE_BIT
+        dstAccessMask = 32   -- VK_ACCESS_SHADER_READ_BIT
     })
 
     state.colorBarrierIn = ffi.new("VkImageMemoryBarrier", {
@@ -85,26 +87,25 @@ function Renderer.AllocateFrameState(vk, device, width, height)
         dstAccessMask = 0
     })
 
-    -- Set to 1000044001 (Attachment Info)
+    -- FIX: Dynamic Rendering LoadOps
     state.colorAttachment = ffi.new("VkRenderingAttachmentInfoKHR[1]")
     state.colorAttachment[0].sType = ffi.cast("uint32_t", 1000044001)
     state.colorAttachment[0].imageLayout = 2
-    state.colorAttachment[0].loadOp = 0
+    state.colorAttachment[0].loadOp = 1 -- VK_ATTACHMENT_LOAD_OP_CLEAR
     state.colorAttachment[0].storeOp = 0
     state.colorAttachment[0].clearValue.color.float32[0] = 0.01
     state.colorAttachment[0].clearValue.color.float32[1] = 0.01
     state.colorAttachment[0].clearValue.color.float32[2] = 0.02
     state.colorAttachment[0].clearValue.color.float32[3] = 1.0
 
-    -- Set to 1000044001 (Attachment Info)
+    -- FIX: Dynamic Rendering LoadOps
     state.depthAttachment = ffi.new("VkRenderingAttachmentInfoKHR[1]")
     state.depthAttachment[0].sType = ffi.cast("uint32_t", 1000044001)
     state.depthAttachment[0].imageLayout = 3
-    state.depthAttachment[0].loadOp = 0
+    state.depthAttachment[0].loadOp = 1 -- VK_ATTACHMENT_LOAD_OP_CLEAR
     state.depthAttachment[0].storeOp = 1
     state.depthAttachment[0].clearValue.depthStencil.depth = 0.0
 
-    -- Set to 1000044000 (Rendering Info)
     state.renderInfo = ffi.new("VkRenderingInfoKHR[1]")
     state.renderInfo[0].sType = ffi.cast("uint32_t", 1000044000)
     state.renderInfo[0].renderArea.extent.width = width
@@ -125,7 +126,6 @@ function Renderer.AllocateFrameState(vk, device, width, height)
         signalSemaphoreCount = 1
     })
 
-    -- FIXED: 1024 = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
     state.waitStages = ffi.new("int32_t[1]", { 1024 })
     state.submitInfo.pWaitDstStageMask = state.waitStages
     state.cmdPtr = ffi.new("VkCommandBuffer[1]")
@@ -136,7 +136,6 @@ function Renderer.AllocateFrameState(vk, device, width, height)
         swapchainCount = 1
     })
 
-    -- Loading KHR Extension Pointers directly
     state.vkCmdBeginRendering = ffi.cast("PFN_vkCmdBeginRenderingKHR", vk.vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR"))
     state.vkCmdEndRendering = ffi.cast("PFN_vkCmdEndRenderingKHR", vk.vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"))
     assert(state.vkCmdBeginRendering ~= ffi.NULL and state.vkCmdEndRendering ~= ffi.NULL, "FATAL: KHR Dynamic Rendering Pointers Missing!")
@@ -149,13 +148,10 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
     local imageAvailable = sync.imageAvailable[current_frame]
     local renderFinished = sync.renderFinished[current_frame]
 
-    -- [DELETED vkWaitForFences FROM HERE]
-
     local TIMEOUT_MAX = ffi.cast("uint64_t", -1)
     local res = vk.vkAcquireNextImageKHR(device, swapchain.handle, TIMEOUT_MAX, imageAvailable, nil, f_state.pImageIndex)
     if res ~= 0 and res ~= 1000001004 then return false end
 
-    -- Reset the fence ONLY AFTER we successfully acquire the image
     vk.vkResetFences(device, 1, ffi.new("VkFence[1]", {inFlightFence}))
     vk.vkResetCommandBuffer(cmd_buffer, 0)
 
@@ -165,7 +161,10 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
     vk.vkCmdBindPipeline(cmd_buffer, 1, p_compute.pipeline)
     vk.vkCmdBindDescriptorSets(cmd_buffer, 1, p_compute.pipelineLayout, 0, 1, ffi.new("VkDescriptorSet[1]", {desc_state.set0}), 0, nil)
     vk.vkCmdPushConstants(cmd_buffer, desc_state.pipelineLayout, 33, 0, 96, pc_bytes)
-    vk.vkCmdDispatch(cmd_buffer, 1024, 1, 1)
+    
+    -- FIX: Dynamic thread dispatch matching Lua payload
+    local workgroups = math.ceil(pc_bytes.particle_count / 256)
+    vk.vkCmdDispatch(cmd_buffer, workgroups, 1, 1)
 
     vk.vkCmdPipelineBarrier(cmd_buffer, 2048, bit.bor(128, 65536), 0, 1, ffi.new("VkMemoryBarrier[1]", {f_state.computeBarrier}), 0, nil, 0, nil)
 
@@ -183,8 +182,6 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
     f_state.vkCmdBeginRendering(cmd_buffer, f_state.renderInfo)
 
     vk.vkCmdBindPipeline(cmd_buffer, 0, p_gfx.pipeline)
-
-    -- FIXED: Missing Descriptor Bind for the Graphics Pipeline
     vk.vkCmdBindDescriptorSets(cmd_buffer, 0, p_gfx.pipelineLayout, 0, 1, ffi.new("VkDescriptorSet[1]", {desc_state.set0}), 0, nil)
 
     vk.vkCmdSetViewport(cmd_buffer, 0, 1, f_state.viewport)
@@ -199,8 +196,6 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
 
     -- === OUTPUT BARRIER ===
     f_state.colorBarrierOut.image = swapchain.images[imgIndex]
-
-    -- FIXED: Stage Mask Alignment (1024 = COLOR_ATTACHMENT_OUTPUT_BIT)
     vk.vkCmdPipelineBarrier(cmd_buffer, 1024, 8192, 0, 0, nil, 0, nil, 1, ffi.new("VkImageMemoryBarrier[1]", {f_state.colorBarrierOut}))
 
     vk.vkEndCommandBuffer(cmd_buffer)
@@ -241,24 +236,20 @@ function Renderer.SubmitHostToDeviceBarrier(vk, device, queue, cmd_state, master
         flags = 1 -- VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
     })
     vk.vkBeginCommandBuffer(cmd_buffer, beginInfo)
-
-    -- Construct the memory barrier (HOST_WRITE -> SHADER_READ/VERTEX_READ)
+    
     local barrier = ffi.new("VkMemoryBarrier[1]")
     barrier[0].sType = 46
     barrier[0].srcAccessMask = 16384 -- VK_ACCESS_HOST_WRITE_BIT
-
-    -- FIXED: 32 (SHADER_READ) | 4 (VERTEX_ATTRIBUTE_READ)
-    barrier[0].dstAccessMask = bit.bor(32, 4)
-
-    -- 16384 (HOST) -> 2048 (COMPUTE) | 4 (VERTEX_INPUT)
+    barrier[0].dstAccessMask = bit.bor(32, 4) -- VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT
+    
     vk.vkCmdPipelineBarrier(cmd_buffer, 16384, bit.bor(2048, 4), 0, 1, barrier, 0, nil, 0, nil)
     vk.vkEndCommandBuffer(cmd_buffer)
-
+    
     local submitInfo = ffi.new("VkSubmitInfo[1]")
     submitInfo[0].sType = 4
     submitInfo[0].commandBufferCount = 1
     submitInfo[0].pCommandBuffers = ffi.new("VkCommandBuffer[1]", {cmd_buffer})
-
+    
     vk.vkQueueSubmit(queue, 1, submitInfo, nil)
     vk.vkQueueWaitIdle(queue)
     print("[RENDERER] VRAM Coherency Secured.")

@@ -1,4 +1,3 @@
-// render.vert
 #version 460
 
 layout(std430, binding = 0) readonly buffer MegaBuffer {
@@ -29,8 +28,8 @@ void main() {
     float y = data[pc.pos_y_idx + id];
     float z = data[pc.pos_z_idx + id];
 
-    // Project raw world coordinates into clip space
-    gl_Position = pc.viewProj * vec4(x, y, z, 1.0);
+    // FIX: Right-multiply to map Lua's row-major array to GLSL's column-major logic
+    gl_Position = vec4(x, y, z, 1.0) * pc.viewProj; 
     gl_PointSize = 2.0;
 
     // Z-based depth coloring
