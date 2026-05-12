@@ -1,3 +1,4 @@
+-- main.lua
 local ffi = require("ffi")
 local bit = require("bit")
 local math = require("math")
@@ -11,6 +12,7 @@ local graphics = require("graphics_pipeline")
 local cmd_factory = require("command_factory")
 local renderer = require("renderer")
 
+-- [ANCHOR] At top of file, inside ffi.cdef - [+ ADD +] new function declarations
 ffi.cdef[[
     int vibe_get_is_running();
     void vibe_trigger_shutdown();
@@ -21,6 +23,9 @@ ffi.cdef[[
     void vibe_get_window_size(int* width, int* height);
     void vibe_set_glfw_cmd(int cmd, int w, int h);
     int vibe_get_last_key();
+    uint32_t vibe_get_wasd();
+    float vibe_get_mouse_dx();
+    float vibe_get_mouse_dy();
 
     typedef struct {
         uint32_t pos_x_idx;
@@ -81,6 +86,13 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
 
     local aspect = sc_state.extent.width / sc_state.extent.height
     vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
+    
+    -- [- REPLACE -] New camera control variables and input polling loop
+    local cam_pos = {x = 0.0, y = 0.0, z = -600.0}
+    local cam_yaw = 0.0
+    local cam_pitch = 0.0
+    local sensitivity = 0.002
+    local speed = 5.0
 
     while ffi.C.vibe_get_is_running() == 1 do
         -- ==========================================================
@@ -95,11 +107,31 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
         -- ==========================================================
         cmd_factory.ResetCurrentFrame(vk, device, cmd_state)
 
-        pc.dt = frame_count * 0.016
-        local orbit_x = math.sin(pc.dt) * 400.0
-        local orbit_z = math.cos(pc.dt) * 400.0
+        -- Input Polling
+        local dx = ffi.C.vibe_get_mouse_dx()
+        local dy = ffi.C.vibe_get_mouse_dy()
+        local wasd = ffi.C.vibe_get_wasd()
 
-        vmath.lookAt(orbit_x, 200.0, orbit_z, 0.0, 0.0, 0.0, view)
+        cam_yaw = cam_yaw + (dx * sensitivity)
+        cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity)))
+
+        local fwd_x = math.sin(cam_yaw) * math.cos(cam_pitch)
+        local fwd_y = -math.sin(cam_pitch)
+        local fwd_z = math.cos(cam_yaw) * math.cos(cam_pitch)
+
+        local right_x = math.cos(cam_yaw)
+        local right_z = -math.sin(cam_yaw)
+
+        if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * speed; cam_pos.y = cam_pos.y + fwd_y * speed; cam_pos.z = cam_pos.z + fwd_z * speed end
+        if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * speed; cam_pos.y = cam_pos.y - fwd_y * speed; cam_pos.z = cam_pos.z - fwd_z * speed end
+        if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end
+        if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end
+
+        vmath.lookAt(cam_pos.x, cam_pos.y, cam_pos.z, 
+                     cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z, 
+                     view)
+                     
+        pc.dt = frame_count * 0.016
         vmath.multiply_mat4(proj, view, pc.viewProj)
 
         local cmd_buffer = cmd_factory.AllocateBuffer(vk, device, cmd_state)
@@ -156,6 +188,26 @@ local function command_glfw_fiber()
     -- >>> NEW: RENDERER INITIALIZATION <<<
     local sync_state = renderer.InitSync(vk, device, 3)
     local frame_state = renderer.AllocateFrameState(vk, device, sc_state.extent.width, sc_state.extent.height)
+    
+    -- [ANCHOR] Right after AllocateFrameState - [+ ADD +] particle injection
+    print("[LUA CO] Injecting 1,000,000 Particles into ReBAR Arena (SoA Layout)...")
+    local float_ptr = ffi.cast("float*", memory.Mapped["MASTER_GPU_BLOCK"])
+    local particle_count = 1000000
+    local radius = 300.0
+    math.randomseed(1337)
+    for i = 0, particle_count - 1 do
+        local u = math.random()
+        local v = math.random()
+        local theta = u * 2.0 * math.pi
+        local phi = math.acos(2.0 * v - 1.0)
+        local r = radius * math.pow(math.random(), 0.333)
+
+        float_ptr[0 + i]       = r * math.sin(phi) * math.cos(theta) -- X
+        float_ptr[1000000 + i] = r * math.sin(phi) * math.sin(theta) -- Y
+        float_ptr[2000000 + i] = r * math.cos(phi)                   -- Z
+    end
+    renderer.SubmitHostToDeviceBarrier(vk, device, vk_state.queue, cmd_state, memory.Buffers["MASTER_GPU_BLOCK"])
+    print("[LUA CO] Injection Complete & Memory Barrier Flushed.")
 
     start_fiber(function()
         render_fiber(vk, device, sc_state, vk_state.queue, cmd_state, sync_state, frame_state, memory.Buffers["MASTER_GPU_BLOCK"], comp_state, gfx_state, desc_state)

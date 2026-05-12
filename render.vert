@@ -1,3 +1,4 @@
+// render.vert
 #version 460
 
 layout(std430, binding = 0) readonly buffer MegaBuffer {
@@ -10,9 +11,10 @@ layout(push_constant) uniform PushConstants {
     uint pos_z_idx;
     uint particle_count;
     float dt;
+    uint _pad[3];  // Explicit alignment padding to match Lua struct
+    mat4 viewProj; // The 64-byte matrix
 } pc;
 
-// --> NEW: Explicit output to Fragment Shader
 layout(location = 0) out vec4 fragColor;
 
 void main() {
@@ -27,11 +29,11 @@ void main() {
     float y = data[pc.pos_y_idx + id];
     float z = data[pc.pos_z_idx + id];
 
-    vec2 screen_pos = vec2(x / 400.0, y / 400.0);
+    // Project raw world coordinates into clip space
+    gl_Position = pc.viewProj * vec4(x, y, z, 1.0);
+    gl_PointSize = 2.0;
 
-    gl_Position = vec4(screen_pos, 0.5, 1.0);
-    gl_PointSize = 2.0; 
-    
-    // --> NEW: Write out a default color to satisfy the Fragment Shader
-    fragColor = vec4(1.0, 1.0, 1.0, 1.0); 
+    // Z-based depth coloring
+    float depth_intensity = clamp((z + 300.0) / 600.0, 0.2, 1.0);
+    fragColor = vec4(depth_intensity, depth_intensity * 0.8, 1.0, 1.0);
 }

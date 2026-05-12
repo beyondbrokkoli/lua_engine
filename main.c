@@ -1,3 +1,4 @@
+// main.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -39,6 +40,7 @@ static void vmath_thread_join(vmath_thread_t thread) {
 #define CMD_BOOT_WINDOW     1
 #define CMD_KILL_WINDOW     2
 
+// [- REPLACE -] IPC_Mailbox struct with new input fields
 typedef struct {
     alignas(64) _Atomic int ready_index;
     _Atomic int is_running;
@@ -46,11 +48,16 @@ typedef struct {
     _Atomic(void*) vk_instance;
     _Atomic(void*) vk_surface;
 
-    // --- NEW: Remote Control Hub ---
+    // --- Remote Control Hub ---
     _Atomic int glfw_cmd;
     _Atomic int glfw_arg_w;
     _Atomic int glfw_arg_h;
     _Atomic int last_key_pressed;
+    
+    // --- NEW: Input State ---
+    _Atomic uint32_t wasd_mask;
+    _Atomic float mouse_dx;
+    _Atomic float mouse_dy;
 } IPC_Mailbox;
 
 typedef struct {
@@ -82,14 +89,43 @@ EXPORT void vibe_set_glfw_cmd(int cmd, int w, int h) {
 }
 
 EXPORT int vibe_get_last_key() {
-    // Reads the key and immediately resets it to 0 so Lua doesn't double-read
     return atomic_exchange_explicit(&g_engine.mailbox.last_key_pressed, 0, memory_order_acquire);
 }
 
-// Intercept GLFW keys and toss them into the mailbox
+// [ANCHOR] Right above glfw_key_callback - [+ ADD +] cursor callback
+double last_mx = 0.0, last_my = 0.0;
+bool first_mouse = true;
+
+void glfw_cursor_callback(GLFWwindow* window, double xpos, double ypos) {
+    if (first_mouse) { last_mx = xpos; last_my = ypos; first_mouse = false; return; }
+    float dx = (float)(xpos - last_mx);
+    float dy = (float)(ypos - last_my);
+    last_mx = xpos; last_my = ypos;
+    
+    float current_dx = atomic_load_explicit(&g_engine.mailbox.mouse_dx, memory_order_acquire);
+    while (!atomic_compare_exchange_weak_explicit(&g_engine.mailbox.mouse_dx, &current_dx, current_dx + dx, memory_order_release, memory_order_relaxed));
+    
+    float current_dy = atomic_load_explicit(&g_engine.mailbox.mouse_dy, memory_order_acquire);
+    while (!atomic_compare_exchange_weak_explicit(&g_engine.mailbox.mouse_dy, &current_dy, current_dy + dy, memory_order_release, memory_order_relaxed));
+}
+
+// [- REPLACE -] glfw_key_callback with WASD mask handling
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    if (action == GLFW_PRESS) {
-        atomic_store_explicit(&g_engine.mailbox.last_key_pressed, key, memory_order_release);
+    if (action == GLFW_PRESS || action == GLFW_RELEASE) {
+        uint32_t bit = 0;
+        if (key == GLFW_KEY_W) bit = 1; else if (key == GLFW_KEY_S) bit = 2;
+        else if (key == GLFW_KEY_A) bit = 4; else if (key == GLFW_KEY_D) bit = 8;
+        
+        if (bit) {
+            uint32_t mask = atomic_load_explicit(&g_engine.mailbox.wasd_mask, memory_order_acquire);
+            uint32_t new_mask;
+            do {
+                new_mask = (action == GLFW_PRESS) ? (mask | bit) : (mask & ~bit);
+            } while(!atomic_compare_exchange_weak_explicit(&g_engine.mailbox.wasd_mask, &mask, new_mask, memory_order_release, memory_order_relaxed));
+        }
+    }
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        atomic_store_explicit(&g_engine.mailbox.last_key_pressed, GLFW_KEY_ESCAPE, memory_order_release);
     }
 }
 // ==========================================
@@ -145,6 +181,12 @@ EXPORT void vibe_eject_validation_layers(void* instance) {
         destroyFn((VkInstance)instance, g_debugMessenger, NULL);
     }
 }
+
+// [ANCHOR] Right below vibe_eject_validation_layers - [+ ADD +] new EXPORTs
+EXPORT uint32_t vibe_get_wasd() { return atomic_load_explicit(&g_engine.mailbox.wasd_mask, memory_order_acquire); }
+EXPORT float vibe_get_mouse_dx() { return atomic_exchange_explicit(&g_engine.mailbox.mouse_dx, 0.0f, memory_order_acquire); }
+EXPORT float vibe_get_mouse_dy() { return atomic_exchange_explicit(&g_engine.mailbox.mouse_dy, 0.0f, memory_order_acquire); }
+
 void vibe_init_mailbox() {
     atomic_init(&g_engine.mailbox.ready_index, 0);
     atomic_init(&g_engine.mailbox.is_running, 1);
@@ -170,10 +212,13 @@ int main(int argc, char** argv) {
 
     if (!glfwInit()) return -1;
     vibe_init_mailbox();
-    
+
     // Ensure new atomic fields start at 0
     atomic_init(&g_engine.mailbox.glfw_cmd, CMD_IDLE);
     atomic_init(&g_engine.mailbox.last_key_pressed, 0);
+    atomic_init(&g_engine.mailbox.wasd_mask, 0);
+    atomic_init(&g_engine.mailbox.mouse_dx, 0.0f);
+    atomic_init(&g_engine.mailbox.mouse_dy, 0.0f);
 
     // Spawn the Lua Overlord
     vmath_thread_t lua_thread = vmath_thread_start(lua_co_overlord_loop, NULL);
@@ -191,11 +236,15 @@ int main(int argc, char** argv) {
         if (cmd == CMD_BOOT_WINDOW && window == NULL) {
             int w = atomic_load_explicit(&g_engine.mailbox.glfw_arg_w, memory_order_relaxed);
             int h = atomic_load_explicit(&g_engine.mailbox.glfw_arg_h, memory_order_relaxed);
-            
+
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
             glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
             window = glfwCreateWindow(w, h, "VibeEngine Remote", NULL, NULL);
             glfwSetKeyCallback(window, glfw_key_callback);
+            
+            // [ANCHOR] Inside CMD_BOOT_WINDOW block - [+ ADD +] cursor callback setup
+            glfwSetCursorPosCallback(window, glfw_cursor_callback);
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
             // Fetch the instance Lua already published
             void* instance = atomic_load_explicit(&g_engine.mailbox.vk_instance, memory_order_acquire);
@@ -206,7 +255,7 @@ int main(int argc, char** argv) {
                     printf("[C-CORE] Window & Surface Created on Lua's Demand!\n");
                 }
             }
-        } 
+        }
         else if (cmd == CMD_KILL_WINDOW && window != NULL) {
             glfwDestroyWindow(window);
             window = NULL;

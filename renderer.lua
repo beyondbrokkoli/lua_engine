@@ -1,3 +1,4 @@
+-- renderer.lua
 local ffi = require("ffi")
 local bit = require("bit")
 -- ============================================================================
@@ -197,7 +198,7 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
 
     -- === OUTPUT BARRIER ===
     f_state.colorBarrierOut.image = swapchain.images[imgIndex]
-    
+
     -- FIXED: Stage Mask Alignment (1024 = COLOR_ATTACHMENT_OUTPUT_BIT)
     vk.vkCmdPipelineBarrier(cmd_buffer, 1024, 8192, 0, 0, nil, 0, nil, 1, ffi.new("VkImageMemoryBarrier[1]", {f_state.colorBarrierOut}))
 
@@ -223,12 +224,39 @@ function Renderer.Destroy(vk, device, sync, frames_in_flight)
     print("[TEARDOWN] Dismantling Renderer Sync Objects...")
     vk.vkDeviceWaitIdle(device)
     if not sync then return end
-    
+
     for i = 0, frames_in_flight - 1 do
         vk.vkDestroySemaphore(device, sync.imageAvailable[i], nil)
         vk.vkDestroySemaphore(device, sync.renderFinished[i], nil)
         vk.vkDestroyFence(device, sync.inFlight[i], nil)
     end
+end
+
+function Renderer.SubmitHostToDeviceBarrier(vk, device, queue, cmd_state, master_buffer)
+    print("[RENDERER] Executing Host-to-Device Memory Barrier...")
+    local cmd_buffer = cmd_factory.AllocateBuffer(vk, device, cmd_state)
+    local beginInfo = ffi.new("VkCommandBufferBeginInfo", {
+        sType = 42,
+        flags = 1 -- VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    })
+    vk.vkBeginCommandBuffer(cmd_buffer, beginInfo)
+    
+    local barrier = ffi.new("VkMemoryBarrier[1]")
+    barrier[0].sType = 46
+    barrier[0].srcAccessMask = 16384 -- VK_ACCESS_HOST_WRITE_BIT
+    barrier[0].dstAccessMask = bit.bor(32, 2048) -- VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT
+    
+    vk.vkCmdPipelineBarrier(cmd_buffer, 16384, bit.bor(2048, 128), 0, 1, barrier, 0, nil, 0, nil)
+    vk.vkEndCommandBuffer(cmd_buffer)
+    
+    local submitInfo = ffi.new("VkSubmitInfo[1]")
+    submitInfo[0].sType = 4
+    submitInfo[0].commandBufferCount = 1
+    submitInfo[0].pCommandBuffers = ffi.new("VkCommandBuffer[1]", {cmd_buffer})
+    
+    vk.vkQueueSubmit(queue, 1, submitInfo, nil)
+    vk.vkQueueWaitIdle(queue)
+    print("[RENDERER] VRAM Coherency Secured.")
 end
 
 return Renderer
