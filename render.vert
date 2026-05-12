@@ -28,11 +28,12 @@ void main() {
     float y = data[pc.pos_y_idx + id];
     float z = data[pc.pos_z_idx + id];
 
-    // FIX: Right-multiply to map Lua's row-major array to GLSL's column-major logic
     gl_Position = vec4(x, y, z, 1.0) * pc.viewProj; 
-    gl_PointSize = 2.0;
+    
+    // Scale point size for visibility
+    gl_PointSize = 4.0;
 
-    // Z-based depth coloring
-    float depth_intensity = clamp((z + 300.0) / 600.0, 0.2, 1.0);
-    fragColor = vec4(depth_intensity, depth_intensity * 0.8, 1.0, 1.0);
+    // Expand depth intensity gradient
+    float depth_intensity = clamp((z) / 600.0, 0.1, 1.0);
+    fragColor = vec4(depth_intensity, depth_intensity * 0.5, 1.0, 1.0);
 }

@@ -86,13 +86,15 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
 
     local aspect = sc_state.extent.width / sc_state.extent.height
     vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
-    
-    -- [- REPLACE -] New camera control variables and input polling loop
+
+    -- FIND THIS BLOCK in render_fiber:
     local cam_pos = {x = 0.0, y = 0.0, z = -600.0}
     local cam_yaw = 0.0
     local cam_pitch = 0.0
     local sensitivity = 0.002
-    local speed = 5.0
+
+    -- FIX: Throttle from 5.0 to 0.2 to prevent immediate Z-plane clipping
+    local speed = 0.2
 
     while ffi.C.vibe_get_is_running() == 1 do
         -- ==========================================================
@@ -127,11 +129,12 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
         if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end
         if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end
 
-        vmath.lookAt(cam_pos.x, cam_pos.y, cam_pos.z, 
-                     cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z, 
+        vmath.lookAt(cam_pos.x, cam_pos.y, cam_pos.z,
+                     cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z,
                      view)
-                     
-        pc.dt = frame_count * 0.016
+
+        -- FIX: Scale dt slower to prevent vortex blurring at high FPS
+        pc.dt = frame_count * 0.005;
         vmath.multiply_mat4(proj, view, pc.viewProj)
 
         local cmd_buffer = cmd_factory.AllocateBuffer(vk, device, cmd_state)

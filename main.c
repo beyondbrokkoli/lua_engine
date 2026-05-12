@@ -53,7 +53,7 @@ typedef struct {
     _Atomic int glfw_arg_w;
     _Atomic int glfw_arg_h;
     _Atomic int last_key_pressed;
-    
+
     // --- NEW: Input State ---
     _Atomic uint32_t wasd_mask;
     _Atomic float mouse_dx;
@@ -101,10 +101,10 @@ void glfw_cursor_callback(GLFWwindow* window, double xpos, double ypos) {
     float dx = (float)(xpos - last_mx);
     float dy = (float)(ypos - last_my);
     last_mx = xpos; last_my = ypos;
-    
+
     float current_dx = atomic_load_explicit(&g_engine.mailbox.mouse_dx, memory_order_acquire);
     while (!atomic_compare_exchange_weak_explicit(&g_engine.mailbox.mouse_dx, &current_dx, current_dx + dx, memory_order_release, memory_order_relaxed));
-    
+
     float current_dy = atomic_load_explicit(&g_engine.mailbox.mouse_dy, memory_order_acquire);
     while (!atomic_compare_exchange_weak_explicit(&g_engine.mailbox.mouse_dy, &current_dy, current_dy + dy, memory_order_release, memory_order_relaxed));
 }
@@ -115,7 +115,7 @@ void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, in
         uint32_t bit = 0;
         if (key == GLFW_KEY_W) bit = 1; else if (key == GLFW_KEY_S) bit = 2;
         else if (key == GLFW_KEY_A) bit = 4; else if (key == GLFW_KEY_D) bit = 8;
-        
+
         if (bit) {
             uint32_t mask = atomic_load_explicit(&g_engine.mailbox.wasd_mask, memory_order_acquire);
             uint32_t new_mask;
