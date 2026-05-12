@@ -12,7 +12,7 @@ $ ./boot.exe
 [LUA] Window Surface Linked from Main Thread!
 [LUA] Hardware GPU Selected!
 [LUA] Logical Device Created!
-[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x01714f0e2178
+[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x01fac9934b98
 [MEMORY] ReBAR Supported! Streaming directly to VRAM.
 [MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (256.00 MB)
 [SWAPCHAIN] Building the display chain...
@@ -30,8 +30,4 @@ $ ./boot.exe
 [RENDERER] VRAM Coherency Secured.
 [LUA CO] Injection Complete & Memory Barrier Flushed.
 [LUA CO] Render Fiber Weaving...
-[LUA IO] ESCAPE PRESSED. Executing Teardown...
-[LUA-OS-THREAD] VM Destroyed.
 
-[C-CORE] Shutdown triggered. Waiting for Lua VM...
-[C-CORE] Clean Exit.
