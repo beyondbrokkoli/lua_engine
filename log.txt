@@ -1,3 +1,4 @@
+AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/lua_engine
 $ ./boot.exe
 [C-CORE] Booting Headless Worker...
 [LUA-OS-THREAD] Booting Lua VM...
@@ -11,7 +12,7 @@ $ ./boot.exe
 [LUA] Window Surface Linked from Main Thread!
 [LUA] Hardware GPU Selected!
 [LUA] Logical Device Created!
-[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x0295fe2f9798
+[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x01714f0e2178
 [MEMORY] ReBAR Supported! Streaming directly to VRAM.
 [MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (256.00 MB)
 [SWAPCHAIN] Building the display chain...
