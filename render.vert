@@ -20,13 +20,15 @@ void main() {
         return;
     }
 
-    // Expand the 10x10 grid into World Space (200x200 spread)
+    // Shrink back to NDC boundaries (-0.8 to 0.8)
     float x = (float(id % 10) / 4.5) - 1.0;
     float y = (float(id / 10) / 4.5) - 1.0;
-    vec4 worldPos = vec4(x * 200.0, y * 200.0, 0.0, 1.0);
+    
+    // Z = 0.5 to pass Reverse-Z
+    vec4 localPos = vec4(x * 0.8, y * 0.8, 0.5, 1.0);
 
-    // Apply the Lua Matrix
-    gl_Position = worldPos * pc.viewProj;
+    // Multiply by the Lua-injected Identity Matrix
+    gl_Position = localPos * pc.viewProj;
     
     gl_PointSize = 40.0; 
     fragColor = vec4(1.0, 0.0, 1.0, 1.0);

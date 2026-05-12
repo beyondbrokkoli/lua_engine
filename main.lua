@@ -135,7 +135,18 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
 
         -- FIX: Scale dt slower to prevent vortex blurring at high FPS
         pc.dt = frame_count * 0.005;
+
         vmath.multiply_mat4(proj, view, pc.viewProj)
+
+        -- ==========================================
+        -- DIAGNOSTIC OVERRIDE: FORCE IDENTITY MATRIX
+        -- ==========================================
+        for i = 0, 15 do pc.viewProj[i] = 0.0 end
+        pc.viewProj[0] = 1.0  -- X
+        pc.viewProj[5] = 1.0  -- Y
+        pc.viewProj[10] = 1.0 -- Z
+        pc.viewProj[15] = 1.0 -- W
+        -- ==========================================
 
         local cmd_buffer = cmd_factory.AllocateBuffer(vk, device, cmd_state)
 
