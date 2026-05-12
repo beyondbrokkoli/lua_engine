@@ -1,6 +1,7 @@
 -- renderer.lua
 local ffi = require("ffi")
 local bit = require("bit")
+local cmd_factory = require("command_factory")
 -- ============================================================================
 -- ALIAS BRIDGE: Map KHR extension names to Core 1.3 definitions from parse.py
 -- ============================================================================
@@ -163,7 +164,7 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
     -- === COMPUTE PASS ===
     vk.vkCmdBindPipeline(cmd_buffer, 1, p_compute.pipeline)
     vk.vkCmdBindDescriptorSets(cmd_buffer, 1, p_compute.pipelineLayout, 0, 1, ffi.new("VkDescriptorSet[1]", {desc_state.set0}), 0, nil)
-    vk.vkCmdPushConstants(cmd_buffer, desc_state.pipelineLayout, 33, 0, 64, pc_bytes)
+    vk.vkCmdPushConstants(cmd_buffer, desc_state.pipelineLayout, 33, 0, 96, pc_bytes)
     vk.vkCmdDispatch(cmd_buffer, 1024, 1, 1)
 
     vk.vkCmdPipelineBarrier(cmd_buffer, 2048, bit.bor(128, 65536), 0, 1, ffi.new("VkMemoryBarrier[1]", {f_state.computeBarrier}), 0, nil, 0, nil)
@@ -190,7 +191,7 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
     vk.vkCmdSetScissor(cmd_buffer, 0, 1, f_state.scissor)
 
     vk.vkCmdBindVertexBuffers(cmd_buffer, 0, 1, ffi.new("VkBuffer[1]", {unified_buffer}), f_state.offsets)
-    vk.vkCmdPushConstants(cmd_buffer, p_gfx.pipelineLayout, 33, 0, 64, pc_bytes)
+    vk.vkCmdPushConstants(cmd_buffer, p_gfx.pipelineLayout, 33, 0, 96, pc_bytes)
 
     vk.vkCmdDraw(cmd_buffer, pc_bytes.particle_count, 1, 0, 0)
 
