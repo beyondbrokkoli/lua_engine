@@ -51,9 +51,8 @@ void main() {
     float z = data[pc.pos_z_idx + id];
 
 
-    // Project raw world coordinates into clip space
-
-    gl_Position = pc.viewProj * vec4(x, y, z, 1.0);
+    // FIX: Right-multiply forces GLSL to evaluate the Column-Major memory as Row-Major
+    gl_Position = vec4(x, y, z, 1.0) * pc.viewProj;
 
     gl_PointSize = 2.0;
 
