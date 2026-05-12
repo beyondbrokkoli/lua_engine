@@ -241,26 +241,24 @@ function Renderer.SubmitHostToDeviceBarrier(vk, device, queue, cmd_state, master
         flags = 1 -- VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
     })
     vk.vkBeginCommandBuffer(cmd_buffer, beginInfo)
-    
--- Construct the memory barrier (HOST_WRITE -> SHADER_READ/VERTEX_READ)
+
+    -- Construct the memory barrier (HOST_WRITE -> SHADER_READ/VERTEX_READ)
     local barrier = ffi.new("VkMemoryBarrier[1]")
     barrier[0].sType = 46
     barrier[0].srcAccessMask = 16384 -- VK_ACCESS_HOST_WRITE_BIT
-    
-    -- FIXED: 32 (SHADER_READ) | 4 (VERTEX_ATTRIBUTE_READ)
-    barrier[0].dstAccessMask = bit.bor(32, 4) 
 
-    -- Submit the barrier (HOST -> COMPUTE/VERTEX)
-    -- srcStage: 16384 = VK_PIPELINE_STAGE_HOST_BIT
-    -- dstStage: 2048 (COMPUTE) | 67108864 (VERTEX_INPUT)
-    vk.vkCmdPipelineBarrier(cmd_buffer, 16384, bit.bor(2048, 67108864), 0, 1, barrier, 0, nil, 0, nil)
+    -- FIXED: 32 (SHADER_READ) | 4 (VERTEX_ATTRIBUTE_READ)
+    barrier[0].dstAccessMask = bit.bor(32, 4)
+
+    -- 16384 (HOST) -> 2048 (COMPUTE) | 4 (VERTEX_INPUT)
+    vk.vkCmdPipelineBarrier(cmd_buffer, 16384, bit.bor(2048, 4), 0, 1, barrier, 0, nil, 0, nil)
     vk.vkEndCommandBuffer(cmd_buffer)
-    
+
     local submitInfo = ffi.new("VkSubmitInfo[1]")
     submitInfo[0].sType = 4
     submitInfo[0].commandBufferCount = 1
     submitInfo[0].pCommandBuffers = ffi.new("VkCommandBuffer[1]", {cmd_buffer})
-    
+
     vk.vkQueueSubmit(queue, 1, submitInfo, nil)
     vk.vkQueueWaitIdle(queue)
     print("[RENDERER] VRAM Coherency Secured.")
