@@ -173,7 +173,7 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
     vk.vkCmdBindPipeline(cmd_buffer, 1, p_compute.pipeline)
     f_state.pDescriptorSets[0] = desc_state.set0
     vk.vkCmdBindDescriptorSets(cmd_buffer, 1, p_compute.pipelineLayout, 0, 1, f_state.pDescriptorSets, 0, nil)
-    vk.vkCmdPushConstants(cmd_buffer, desc_state.pipelineLayout, 33, 0, 84, pc_bytes)
+    vk.vkCmdPushConstants(cmd_buffer, desc_state.pipelineLayout, 33, 0, 128, pc_bytes)
 
     local workgroups = math.ceil(pc_bytes.particle_count / 256)
     vk.vkCmdDispatch(cmd_buffer, workgroups, 1, 1)

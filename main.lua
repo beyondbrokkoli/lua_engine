@@ -27,14 +27,36 @@ ffi.cdef[[
     float vibe_get_mouse_dy();
     int vibe_get_resize_flag();
     void vibe_get_window_size(int* w, int* h);
+
+    // EXACTLY 128 BYTES: Zero compiler guesswork
     typedef struct {
-        mat4_t viewProj;     // Offset 0
-        uint32_t pos_x_idx;     // Offset 64 (4 bytes)
-        uint32_t pos_y_idx;     // Offset 68 (4 bytes)
-        uint32_t pos_z_idx;     // Offset 72 (4 bytes)
-        uint32_t particle_count;// Offset 76 (4 bytes)
-        float dt;               // Offset 80 (4 bytes)
-    } PushConstants;            // Total: 84 bytes (Well under 128B minimum max)
+        mat4_t viewProj;         // Offset 0  (64 bytes)
+        uint32_t pos_x_idx;      // Offset 64 (4 bytes)
+        uint32_t pos_y_idx;      // Offset 68 (4 bytes)
+        uint32_t pos_z_idx;      // Offset 72 (4 bytes)
+        uint32_t particle_count; // Offset 76 (4 bytes)
+        float dt;                // Offset 80 (4 bytes)
+        uint32_t _padding[11];   // Offset 84 (44 bytes explicit padding)
+    } PushConstants;             // Total: 128 bytes
+
+    typedef struct {
+        void* cmd;
+        uint64_t comp_pipeline;
+        uint64_t comp_layout;
+        uint64_t gfx_pipeline;
+        uint64_t gfx_layout;
+        uint64_t desc_set;
+        uint64_t vertex_buffer;
+        uint64_t swapchain_image;
+        uint64_t swapchain_view;
+        uint64_t depth_image;
+        uint64_t depth_view;
+        uint32_t width;
+        uint32_t height;
+        PushConstants pc;
+    } RenderPacket;
+
+    void vibe_record_commands(RenderPacket* p, void* pfnBegin, void* pfnEnd);
 ]]
 
 local active_coroutines = {}
