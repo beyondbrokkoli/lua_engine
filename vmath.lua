@@ -39,11 +39,18 @@ function vmath.lookAt(eye_x, eye_y, eye_z, center_x, center_y, center_z, out_mat
     temp_u.y = temp_f.z * temp_r.x - temp_f.x * temp_r.z
     temp_u.z = temp_f.x * temp_r.y - temp_f.y * temp_r.x
 
-    -- NATIVE COLUMN-MAJOR MEMORY WRITE
-    out_mat.m[0] = temp_r.x;  out_mat.m[4] = temp_u.x;  out_mat.m[8]  = -temp_f.x; out_mat.m[12] = -(temp_r.x*eye_x + temp_r.y*eye_y + temp_r.z*eye_z)
-    out_mat.m[1] = temp_r.y;  out_mat.m[5] = temp_u.y;  out_mat.m[9]  = -temp_f.y; out_mat.m[13] = -(temp_u.x*eye_x + temp_u.y*eye_y + temp_u.z*eye_z)
-    out_mat.m[2] = temp_r.z;  out_mat.m[6] = temp_u.z;  out_mat.m[10] = -temp_f.z; out_mat.m[14] = (temp_f.x*eye_x + temp_f.y*eye_y + temp_f.z*eye_z)
-    out_mat.m[3] = 0.0;       out_mat.m[7] = 0.0;       out_mat.m[11] = 0.0;       out_mat.m[15] = 1.0
+    -- NATIVE COLUMN-MAJOR MEMORY WRITE (Sober Edition)
+    -- Column 0 (Rx, Ux, -Fx, 0)
+    out_mat.m[0]  = temp_r.x;  out_mat.m[1]  = temp_u.x;  out_mat.m[2]  = -temp_f.x; out_mat.m[3]  = 0.0
+    -- Column 1 (Ry, Uy, -Fy, 0)
+    out_mat.m[4]  = temp_r.y;  out_mat.m[5]  = temp_u.y;  out_mat.m[6]  = -temp_f.y; out_mat.m[7]  = 0.0
+    -- Column 2 (Rz, Uz, -Fz, 0)
+    out_mat.m[8]  = temp_r.z;  out_mat.m[9]  = temp_u.z;  out_mat.m[10] = -temp_f.z; out_mat.m[11] = 0.0
+    -- Column 3 (Tx, Ty, Tz, 1)
+    out_mat.m[12] = -(temp_r.x*eye_x + temp_r.y*eye_y + temp_r.z*eye_z)
+    out_mat.m[13] = -(temp_u.x*eye_x + temp_u.y*eye_y + temp_u.z*eye_z)
+    out_mat.m[14] =  (temp_f.x*eye_x + temp_f.y*eye_y + temp_f.z*eye_z)
+    out_mat.m[15] = 1.0
 end
 
 function vmath.perspective_inf_revz(fov_degrees, aspect, near, out_mat)
