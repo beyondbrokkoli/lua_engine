@@ -95,7 +95,7 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
     local last_resize_time = 0.0
     local RESIZE_COOLDOWN = 0.25 -- 250ms of peace required before rebuild
 
-    while ffi.C.vibe_get_is_running() == 1 do
+while ffi.C.vibe_get_is_running() == 1 do
 
         -- ==========================================================
         -- 0. THE DEBOUNCE RITUAL (Catch OS spam & Vulkan Out-Of-Date)
@@ -143,69 +143,65 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
                 print("[LUA CO] Rebuild Complete. Resuming Weaver.")
                 is_resizing = false
             end
+        else
+            -- ==========================================================
+            -- 1. NORMAL FRAME RENDER (Skipped if Resizing)
+            -- ==========================================================
+            local inFlightFence = sync_state.inFlight[cmd_state.current_frame]
+            local TIMEOUT_MAX = ffi.cast("uint64_t", -1)
+            vk.vkWaitForFences(device, 1, ffi.new("VkFence[1]", {inFlightFence}), 1, TIMEOUT_MAX)
 
-            -- Skip the rest of the frame to prevent crashing the old swapchain
-            coroutine.yield(function() return true end)
-            goto continue_frame
+            cmd_factory.ResetCurrentFrame(vk, device, cmd_state)
+
+            -- Input Polling & Camera Math
+            local dx = ffi.C.vibe_get_mouse_dx()
+            local dy = ffi.C.vibe_get_mouse_dy()
+            local wasd = ffi.C.vibe_get_wasd()
+
+            cam_yaw = cam_yaw - (dx * sensitivity)
+            cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity)))
+
+            local fwd_x = math.sin(cam_yaw) * math.cos(cam_pitch)
+            local fwd_y = -math.sin(cam_pitch)
+            local fwd_z = math.cos(cam_yaw) * math.cos(cam_pitch)
+
+            local right_x = math.cos(cam_yaw)
+            local right_z = -math.sin(cam_yaw)
+
+            if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * speed; cam_pos.y = cam_pos.y + fwd_y * speed; cam_pos.z = cam_pos.z + fwd_z * speed end
+            if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * speed; cam_pos.y = cam_pos.y - fwd_y * speed; cam_pos.z = cam_pos.z - fwd_z * speed end
+            if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end
+            if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end
+            if bit.band(wasd, 16) ~= 0 then cam_pos.y = cam_pos.y + speed end
+            if bit.band(wasd, 32) ~= 0 then cam_pos.y = cam_pos.y - speed end
+
+            vmath.lookAt(cam_pos.x, cam_pos.y, cam_pos.z,
+                         cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z,
+                         view)
+
+            pc.dt = frame_count * 0.005;
+            vmath.multiply_mat4(proj, view, pc.viewProj)
+
+            local cmd_buffer = cmd_factory.AllocateBuffer(vk, device, cmd_state)
+
+            local success = renderer.ExecuteFrame(
+                vk, device, queue, sc_state, cmd_buffer,
+                cmd_state.current_frame, sync_state, frame_state,
+                master_buf, comp_state, gfx_state, pc, desc_state
+            )
+
+            -- If Vulkan natively flags a resize (e.g. Windows snapped the window), trigger the cooldown
+            if not success then
+                print("[RENDERER] VK_ERROR_OUT_OF_DATE_KHR Triggered! Forcing Rebuild Protocol.")
+                is_resizing = true
+                last_resize_time = os.clock()
+            end
+
+            cmd_factory.AdvanceFrame(cmd_state)
+            frame_count = frame_count + 1
         end
 
-        -- ==========================================================
-        -- 1. ABSOLUTE BARRICADE: Wait for GPU to finish this frame
-        -- ==========================================================
-        local inFlightFence = sync_state.inFlight[cmd_state.current_frame]
-        local TIMEOUT_MAX = ffi.cast("uint64_t", -1)
-        vk.vkWaitForFences(device, 1, ffi.new("VkFence[1]", {inFlightFence}), 1, TIMEOUT_MAX)
-
-        cmd_factory.ResetCurrentFrame(vk, device, cmd_state)
-
-        -- Input Polling & Camera Math (Kept exactly as you had it)
-        local dx = ffi.C.vibe_get_mouse_dx()
-        local dy = ffi.C.vibe_get_mouse_dy()
-        local wasd = ffi.C.vibe_get_wasd()
-
-        cam_yaw = cam_yaw - (dx * sensitivity) 
-        cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity)))
-
-        local fwd_x = math.sin(cam_yaw) * math.cos(cam_pitch)
-        local fwd_y = -math.sin(cam_pitch)
-        local fwd_z = math.cos(cam_yaw) * math.cos(cam_pitch)
-
-        local right_x = math.cos(cam_yaw)
-        local right_z = -math.sin(cam_yaw)
-
-        if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * speed; cam_pos.y = cam_pos.y + fwd_y * speed; cam_pos.z = cam_pos.z + fwd_z * speed end
-        if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * speed; cam_pos.y = cam_pos.y - fwd_y * speed; cam_pos.z = cam_pos.z - fwd_z * speed end
-        if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end 
-        if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end 
-        if bit.band(wasd, 16) ~= 0 then cam_pos.y = cam_pos.y + speed end
-        if bit.band(wasd, 32) ~= 0 then cam_pos.y = cam_pos.y - speed end
-
-        vmath.lookAt(cam_pos.x, cam_pos.y, cam_pos.z,
-                     cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z,
-                     view)
-
-        pc.dt = frame_count * 0.005;
-        vmath.multiply_mat4(proj, view, pc.viewProj)
-
-        local cmd_buffer = cmd_factory.AllocateBuffer(vk, device, cmd_state)
-
-        local success = renderer.ExecuteFrame(
-            vk, device, queue, sc_state, cmd_buffer,
-            cmd_state.current_frame, sync_state, frame_state,
-            master_buf, comp_state, gfx_state, pc, desc_state
-        )
-
-        -- If Vulkan natively flags a resize (e.g. Windows snapped the window), trigger the cooldown
-        if not success then
-            print("[RENDERER] VK_ERROR_OUT_OF_DATE_KHR Triggered! Forcing Rebuild Protocol.")
-            is_resizing = true
-            last_resize_time = os.clock()
-        end
-
-        cmd_factory.AdvanceFrame(cmd_state)
-        frame_count = frame_count + 1
-
-        ::continue_frame::
+        -- ONE unified yield for both paths
         coroutine.yield(function() return true end)
     end
     print("[LUA CO] Render Fiber Terminated. Frames: " .. tostring(frame_count))
