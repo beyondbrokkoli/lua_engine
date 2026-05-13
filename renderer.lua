@@ -152,37 +152,104 @@ function Renderer.AllocateFrameState(vk, device, width, height)
     state.pSwapchains = ffi.new("VkSwapchainKHR[1]")
     state.pSubmitInfos = ffi.new("VkSubmitInfo[1]")
 
+    -- 1. Slot the initialized structs into the FFI arrays
+    state.pComputeBarrierArr[0] = state.computeBarrier
+    state.pColorBarrierOutArr[0] = state.colorBarrierOut
+
+    -- 2. Cache Vulkan commands to bypass global table lookups
+    state.vkCmdBindPipeline = vk.vkCmdBindPipeline
+    state.vkCmdBindDescriptorSets = vk.vkCmdBindDescriptorSets
+    state.vkCmdPushConstants = vk.vkCmdPushConstants
+    state.vkCmdDispatch = vk.vkCmdDispatch
+    state.vkCmdPipelineBarrier = vk.vkCmdPipelineBarrier
+    state.vkCmdSetViewport = vk.vkCmdSetViewport
+    state.vkCmdSetScissor = vk.vkCmdSetScissor
+    state.vkCmdBindVertexBuffers = vk.vkCmdBindVertexBuffers
+    state.vkCmdDraw = vk.vkCmdDraw
+
     return state
 end
 
+local function DispatchCHost(packet, f_state)
+    ffi.C.vibe_record_commands(packet, f_state.vkCmdBeginRendering, f_state.vkCmdEndRendering)
+end
+
+local function DispatchLuaNative(vk, packet, f_state)
+    -- Begin Command Buffer
+    vk.vkBeginCommandBuffer(packet.cmd, f_state.cmdBeginInfo)
+
+    -- COMPUTE PASS
+    f_state.vkCmdBindPipeline(packet.cmd, 1, ffi.cast("VkPipeline", packet.comp_pipeline))
+
+    local dset = ffi.new("VkDescriptorSet[1]", ffi.cast("VkDescriptorSet", packet.desc_set))
+    f_state.vkCmdBindDescriptorSets(packet.cmd, 1, ffi.cast("VkPipelineLayout", packet.comp_layout), 0, 1, dset, 0, nil)
+
+    -- Push Constants FFI Passthrough (Preserves 128-byte alignment)
+    f_state.vkCmdPushConstants(packet.cmd, ffi.cast("VkPipelineLayout", packet.comp_layout),
+                          bit.bor(1, 32), -- VERTEX | COMPUTE
+                          0, 128, packet.pc)
+
+    local workgroups = math.ceil(packet.pc.particle_count / 256)
+    f_state.vkCmdDispatch(packet.cmd, workgroups, 1, 1)
+
+    -- Compute to Vertex Barrier
+    f_state.vkCmdPipelineBarrier(packet.cmd, 2048, 128, 0, 1, f_state.pComputeBarrierArr, 0, nil, 0, nil)
+
+    -- Pre-Rendering Image Barriers (Color & Depth)
+    f_state.preBarriers[0].image = ffi.cast("VkImage", packet.swapchain_image)
+    f_state.preBarriers[1].image = ffi.cast("VkImage", packet.depth_image)
+    f_state.vkCmdPipelineBarrier(packet.cmd, 1, bit.bor(256, 1024), 0, 0, nil, 0, nil, 2, f_state.preBarriers)
+
+    -- GRAPHICS PASS (Dynamic Rendering)
+    f_state.colorAttachment[0].imageView = ffi.cast("VkImageView", packet.swapchain_view)
+    f_state.depthAttachment[0].imageView = ffi.cast("VkImageView", packet.depth_view)
+
+    f_state.vkCmdBeginRendering(packet.cmd, f_state.renderInfo)
+
+    f_state.vkCmdBindPipeline(packet.cmd, 0, ffi.cast("VkPipeline", packet.gfx_pipeline))
+    f_state.vkCmdBindDescriptorSets(packet.cmd, 0, ffi.cast("VkPipelineLayout", packet.gfx_layout), 0, 1, dset, 0, nil)
+
+    f_state.vkCmdSetViewport(packet.cmd, 0, 1, f_state.viewport)
+    f_state.vkCmdSetScissor(packet.cmd, 0, 1, f_state.scissor)
+
+    local vbo = ffi.new("VkBuffer[1]", ffi.cast("VkBuffer", packet.vertex_buffer))
+    f_state.vkCmdBindVertexBuffers(packet.cmd, 0, 1, vbo, f_state.offsets)
+
+    f_state.vkCmdPushConstants(packet.cmd, ffi.cast("VkPipelineLayout", packet.gfx_layout), bit.bor(1, 32), 0, 128, packet.pc)
+
+    f_state.vkCmdDraw(packet.cmd, packet.pc.particle_count, 1, 0, 0)
+
+    f_state.vkCmdEndRendering(packet.cmd)
+
+    -- Present Image Barrier
+    f_state.colorBarrierOut.image = ffi.cast("VkImage", packet.swapchain_image)
+    f_state.vkCmdPipelineBarrier(packet.cmd, 256, 4096, 0, 0, nil, 0, nil, 1, f_state.pColorBarrierOutArr)
+
+    vk.vkEndCommandBuffer(packet.cmd)
+end
 function Renderer.ExecuteFrame(
     vk, device, queue, swapchain, cmd_buffer, current_frame,
-    sync_state, f_state, unified_buffer, p_compute, p_gfx, pc_bytes, desc_state)
-
-    -- 1. ABSOLUTE BARRICADE: Wait for GPU to finish this frame
+    sync_state, f_state, unified_buffer, p_compute, p_gfx, pc_bytes, desc_state,
+    render_mode -- [NEW PARAMETER]
+)
     local inFlightFence = sync_state.inFlight[current_frame]
     local TIMEOUT_MAX = ffi.cast("uint64_t", -1)
     vk.vkWaitForFences(device, 1, ffi.new("VkFence[1]", {inFlightFence}), 1, TIMEOUT_MAX)
 
-    -- 2. ACQUIRE IMAGE
     local imageAvailable = sync_state.imageAvailable[current_frame]
     local res = vk.vkAcquireNextImageKHR(device, swapchain.handle, TIMEOUT_MAX, imageAvailable, nil, f_state.pImageIndex)
 
-    if res == -1000001004 or res == 1000001003 then -- VK_ERROR_OUT_OF_DATE_KHR or VK_SUBOPTIMAL_KHR
+    if res == -1000001004 or res == 1000001003 then
         return false
     elseif res ~= 0 then
         error("Failed to acquire swapchain image! Error: " .. tonumber(res))
     end
 
     vk.vkResetFences(device, 1, ffi.new("VkFence[1]", {inFlightFence}))
-
     local imgIndex = f_state.pImageIndex[0]
 
-    -- =====================================================================
-    -- 3. THE C-CORE DELEGATION 
-    -- =====================================================================
+    -- 1. PACKET FORGE (SSOT)
     local packet = ffi.new("RenderPacket")
-
     packet.cmd = cmd_buffer
     packet.comp_pipeline   = ffi.cast("uint64_t", p_compute.pipeline)
     packet.comp_layout     = ffi.cast("uint64_t", p_compute.pipelineLayout)
@@ -194,26 +261,29 @@ function Renderer.ExecuteFrame(
     packet.swapchain_view  = ffi.cast("uint64_t", swapchain.imageViews[imgIndex])
     packet.depth_image     = ffi.cast("uint64_t", p_gfx.depthImage)
     packet.depth_view      = ffi.cast("uint64_t", p_gfx.depthImageView)
-
     packet.width  = swapchain.extent.width
     packet.height = swapchain.extent.height
     packet.pc = pc_bytes
 
-    -- FIRE THE NATIVE C RECORDER
-    ffi.C.vibe_record_commands(packet, f_state.vkCmdBeginRendering, f_state.vkCmdEndRendering)
+    -- 2. DUAL-DISPATCH ROUTER
+    if render_mode == Renderer.RenderMode.C_HOST then
+        DispatchCHost(packet, f_state)
+    elseif render_mode == Renderer.RenderMode.LUA_NATIVE then
+        DispatchLuaNative(vk, packet, f_state)
+    else
+        error("FATAL: Invalid RenderMode specified.")
+    end
 
-    -- =====================================================================
-    -- 4. QUEUE SUBMIT (Bulletproof Local Arrays via Stack Allocation)
-    -- =====================================================================
+    -- 3. QUEUE SUBMIT
     local renderFinished = sync_state.renderFinished[current_frame]
 
     local waitSemaphores   = ffi.new("VkSemaphore[1]", { imageAvailable })
-    local waitStages       = ffi.new("VkPipelineStageFlags[1]", { 1024 }) -- VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+    local waitStages       = ffi.new("VkPipelineStageFlags[1]", { 1024 })
     local signalSemaphores = ffi.new("VkSemaphore[1]", { renderFinished })
     local submitCmds       = ffi.new("VkCommandBuffer[1]", { cmd_buffer })
 
     local submitInfo = ffi.new("VkSubmitInfo[1]")
-    submitInfo[0].sType                = 4 -- VK_STRUCTURE_TYPE_SUBMIT_INFO
+    submitInfo[0].sType                = 4
     submitInfo[0].waitSemaphoreCount   = 1
     submitInfo[0].pWaitSemaphores      = waitSemaphores
     submitInfo[0].pWaitDstStageMask    = waitStages
@@ -223,16 +293,14 @@ function Renderer.ExecuteFrame(
     submitInfo[0].pSignalSemaphores    = signalSemaphores
 
     local submitRes = vk.vkQueueSubmit(queue, 1, submitInfo, inFlightFence)
-    assert(submitRes == 0, "Failed to submit draw command buffer! Error: " .. tonumber(submitRes))
+    assert(submitRes == 0, "Failed to submit draw command buffer!")
 
-    -- =====================================================================
-    -- 5. PRESENT (Bulletproof Local Arrays)
-    -- =====================================================================
+    -- 4. PRESENT
     local swapchains = ffi.new("VkSwapchainKHR[1]", { swapchain.handle })
     local imgIndices = ffi.new("uint32_t[1]", { imgIndex })
 
     local presentInfo = ffi.new("VkPresentInfoKHR[1]")
-    presentInfo[0].sType              = 1000001001 -- VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
+    presentInfo[0].sType              = 1000001001
     presentInfo[0].waitSemaphoreCount = 1
     presentInfo[0].pWaitSemaphores    = signalSemaphores
     presentInfo[0].swapchainCount     = 1
