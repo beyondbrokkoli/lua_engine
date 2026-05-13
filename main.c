@@ -271,7 +271,7 @@ int main(int argc, char** argv) {
             glfwSetWindowShouldClose(window, GLFW_FALSE); // Prevent infinite loop
         }
 
-        SLEEP_MS(16); // Low-power sleep while we wait for orders
+        // SLEEP_MS(16); // Low-power sleep while we wait for orders
     }
 
     printf("\n[C-CORE] Shutdown triggered. Waiting for Lua VM...\n");
