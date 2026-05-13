@@ -108,7 +108,7 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
         local dy = ffi.C.vibe_get_mouse_dy()
         local wasd = ffi.C.vibe_get_wasd()
 
-        cam_yaw = cam_yaw - (dx * sensitivity)
+        cam_yaw = cam_yaw + (dx * sensitivity)
         cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity)))
 
         local fwd_x = math.sin(cam_yaw) * math.cos(cam_pitch)
@@ -120,8 +120,8 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
 
         if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * speed; cam_pos.y = cam_pos.y + fwd_y * speed; cam_pos.z = cam_pos.z + fwd_z * speed end
         if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * speed; cam_pos.y = cam_pos.y - fwd_y * speed; cam_pos.z = cam_pos.z - fwd_z * speed end
-        if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end
-        if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end
+        if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end
+        if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end
         if bit.band(wasd, 16) ~= 0 then cam_pos.y = cam_pos.y + speed end
         if bit.band(wasd, 32) ~= 0 then cam_pos.y = cam_pos.y - speed end
 
