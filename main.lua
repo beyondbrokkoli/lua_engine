@@ -118,14 +118,23 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
                 ffi.C.vibe_get_window_size(new_w, new_h)
 
                 if new_w[0] > 0 and new_h[0] > 0 then
-                    -- ---> THE FIX: Pass vk_state instead of device <---
+                    -- 3. Teardown old dependent pipelines & Sync
                     graphics.Destroy(vk, vk_state, gfx_state)
                     swapchain_core.Destroy(vk, vk_state, sc_state)
+                    renderer.Destroy(vk, device, sync_state, 3) -- <--- ADD THIS: Nuke cocked semaphores
 
+                    -- 4. Re-forge the chain
                     sc_state = swapchain_core.Init(vk, vk_state, new_w[0], new_h[0])
                     gfx_state = graphics.Init(vk, vk_state, new_w[0], new_h[0], desc_state.pipelineLayout, sc_state.format)
-                    -- ---------------------------------------------------
 
+                    -- <--- ADD THIS: Rebuild sync and patch the existing table
+                    local fresh_sync = renderer.InitSync(vk, device, 3)
+                    sync_state.imageAvailable = fresh_sync.imageAvailable
+                    sync_state.renderFinished = fresh_sync.renderFinished
+                    sync_state.inFlight       = fresh_sync.inFlight
+                    -- --------------------------------------------------------
+
+                    -- 5. Update Frame State (Viewport/Scissor)
                     frame_state.viewport[0].width = new_w[0]
                     frame_state.viewport[0].height = new_h[0]
                     frame_state.scissor[0].extent.width = new_w[0]
