@@ -116,7 +116,7 @@ while ffi.C.vibe_get_is_running() == 1 do
                 -- 2. Fetch new dimensions
                 local new_w = ffi.new("int[1]")
                 local new_h = ffi.new("int[1]")
-                ffi.C.vibe_get_new_window_size(new_w, new_h)
+                ffi.C.vibe_get_window_size(new_w, new_h)
 
                 if new_w[0] > 0 and new_h[0] > 0 then
                     -- 3. Teardown old dependent pipelines
