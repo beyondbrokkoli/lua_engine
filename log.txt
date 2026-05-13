@@ -1,3 +1,4 @@
+AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/lua_engine
 $ ./boot.exe
 [C-CORE] Booting Headless Worker...
 [LUA-OS-THREAD] Booting Lua VM...
@@ -11,7 +12,7 @@ $ ./boot.exe
 [LUA] Window Surface Linked from Main Thread!
 [LUA] Hardware GPU Selected!
 [LUA] Logical Device Created!
-[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x019c79e61348
+[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x0202f580a1b8
 [MEMORY] ReBAR Supported! Streaming directly to VRAM.
 [MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (256.00 MB)
 [SWAPCHAIN] Building the display chain...
@@ -30,4 +31,3 @@ The Vulkan spec states: imageExtent members width and height must both be non-ze
 
 [LUA FATAL ERROR] main.lua:57: FATAL: FIBER CRASH -> .\swapchain.lua:39: FATAL: Failed to create Swapchain! Error: -1
 [LUA-OS-THREAD] VM Destroyed.
-
