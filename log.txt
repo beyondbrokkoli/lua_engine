@@ -1,0 +1,33 @@
+$ ./boot.exe
+[C-CORE] Booting Headless Worker...
+[LUA-OS-THREAD] Booting Lua VM...
+[LUA IO] Booting Headless...
+[LUA] Initializing Vulkan Core (Instance Generation)...
+[LUA] Vulkan Instance Created!
+[C-CORE] Validation Layer Enforcer Injected Successfully!
+[LUA IO] Ordering C-Core to Boot GLFW Window...
+[C-CORE] Window & Surface Created on Lua's Demand!
+[LUA] Resuming Vulkan Setup. Finalizing Logical Device...
+[LUA] Window Surface Linked from Main Thread!
+[LUA] Hardware GPU Selected!
+[LUA] Logical Device Created!
+[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x019c79e61348
+[MEMORY] ReBAR Supported! Streaming directly to VRAM.
+[MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (256.00 MB)
+[SWAPCHAIN] Building the display chain...
+
+[VULKAN LAYER ENFORCER]
+SEVERITY: 4096
+MESSAGE: vkCreateSwapchainKHR(): pCreateInfo->imageExtent (width = 0, height = 0) is invalid.
+The Vulkan spec states: imageExtent members width and height must both be non-zero (https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#VUID-VkSwapchainCreateInfoKHR-imageExtent-01689)
+
+
+[VULKAN LAYER ENFORCER]
+SEVERITY: 4096
+MESSAGE: vkCreateSwapchainKHR(): pCreateInfo->imageExtent (width = 0, height = 0) is invalid.
+The Vulkan spec states: imageExtent members width and height must both be non-zero (https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#VUID-VkSwapchainCreateInfoKHR-imageExtent-01689)
+
+
+[LUA FATAL ERROR] main.lua:57: FATAL: FIBER CRASH -> .\swapchain.lua:39: FATAL: Failed to create Swapchain! Error: -1
+[LUA-OS-THREAD] VM Destroyed.
+

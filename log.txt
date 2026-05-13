@@ -1,7 +1,0 @@
-AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/lua_engine
-$ ./boot.exe
-[C-CORE] Booting Headless Worker...
-[LUA-OS-THREAD] Booting Lua VM...
-
-[LUA FATAL ERROR] main.lua:149: <goto continue_frame> jumps into the scope of local 'inFlightFence'
-[LUA-OS-THREAD] VM Destroyed.
