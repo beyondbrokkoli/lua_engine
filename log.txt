@@ -12,7 +12,7 @@ $ ./boot.exe
 [LUA] Window Surface Linked from Main Thread!
 [LUA] Hardware GPU Selected!
 [LUA] Logical Device Created!
-[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x01a5408dafd8
+[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x0276f1828228
 [MEMORY] ReBAR Supported! Streaming directly to VRAM.
 [MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (256.00 MB)
 [SWAPCHAIN] Building the display chain...
@@ -29,24 +29,18 @@ $ ./boot.exe
 
 [VULKAN LAYER ENFORCER]
 SEVERITY: 4096
-MESSAGE: vkQueueSubmit(): pSubmits[0].sType must be VK_STRUCTURE_TYPE_SUBMIT_INFO.
-The Vulkan spec states: sType must be VK_STRUCTURE_TYPE_SUBMIT_INFO (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-VkSubmitInfo-sType-sType)
+MESSAGE: vkCmdPipelineBarrier(): pImageMemoryBarriers[0].image is VK_NULL_HANDLE.
 
 
 [VULKAN LAYER ENFORCER]
 SEVERITY: 4096
-MESSAGE: vkQueuePresentKHR(): pPresentInfo->pSwapchains[0] is VK_NULL_HANDLE.
+MESSAGE: vkCmdPipelineBarrier(): pImageMemoryBarriers[0].image Invalid VkImage Object 0x0.
+The Vulkan spec states: image must be a valid VkImage handle (https://docs.vulkan.org/spec/latest/chapters/synchronization.html#VUID-VkImageMemoryBarrier-image-parameter)
 
 
 [VULKAN LAYER ENFORCER]
 SEVERITY: 4096
-MESSAGE: vkQueuePresentKHR(): pPresentInfo->pWaitSemaphores[0] Invalid VkSemaphore Object 0x0.
-The Vulkan spec states: If waitSemaphoreCount is not 0, pWaitSemaphores must be a valid pointer to an array of waitSemaphoreCount valid VkSemaphore handles (https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#VUID-VkPresentInfoKHR-pWaitSemaphores-parameter)
-
-
-[VULKAN LAYER ENFORCER]
-SEVERITY: 4096
-MESSAGE: vkQueuePresentKHR(): pPresentInfo->pSwapchains[0] Invalid VkSwapchainKHR Object 0x0.
-The Vulkan spec states: pSwapchains must be a valid pointer to an array of swapchainCount valid VkSwapchainKHR handles (https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#VUID-VkPresentInfoKHR-pSwapchains-parameter)
+MESSAGE: vkCmdPipelineBarrier(): pImageMemoryBarriers[0].srcAccessMask (VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT) is not supported by stage mask (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT).
+The Vulkan spec states: For each element of pImageMemoryBarriers, if its srcQueueFamilyIndex and dstQueueFamilyIndex members are equal, or if its srcQueueFamilyIndex is the queue family index that was used to create the command pool that commandBuffer was allocated from, then its srcAccessMask member must only contain access flags that are supported by one or more of the pipeline stages in srcStageMask, as specified in the table of supported access types (https://docs.vulkan.org/spec/latest/chapters/synchronization.html#VUID-vkCmdPipelineBarrier-pImageMemoryBarriers-02819)
 
 Segmentation fault         ./boot.exe
