@@ -79,7 +79,10 @@ function Renderer.AllocateFrameState(vk, device, width, height)
         dstAccessMask = 1024
     })
 
-    state.preBarriers = ffi.new("VkImageMemoryBarrier[2]", {state.colorBarrierIn, state.depthBarrierIn})
+    -- Explicitly allocate the array, then copy the structs by value
+    state.preBarriers = ffi.new("VkImageMemoryBarrier[2]")
+    state.preBarriers[0] = state.colorBarrierIn
+    state.preBarriers[1] = state.depthBarrierIn
 
     state.colorBarrierOut = ffi.new("VkImageMemoryBarrier", {
         sType = 45,
