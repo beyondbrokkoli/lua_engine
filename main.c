@@ -248,6 +248,8 @@ int main(int argc, char** argv) {
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
             glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
             window = glfwCreateWindow(w, h, "VibeEngine Remote", NULL, NULL);
+            // NATIVE OS CLAMP: Prevent crushing the window into invalid math ranges
+            glfwSetWindowSizeLimits(window, 640, 360, GLFW_DONT_CARE, GLFW_DONT_CARE);
             glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
             glfwSetKeyCallback(window, glfw_key_callback);
 

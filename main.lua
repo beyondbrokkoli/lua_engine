@@ -142,7 +142,9 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
                     frame_state.renderInfo[0].renderArea.extent.width = new_w[0]
                     frame_state.renderInfo[0].renderArea.extent.height = new_h[0]
 
-                    aspect = new_w[0] / new_h[0]
+                    -- 6. Recalculate Projection Aspect Ratio safely
+                    local safe_h = math.max(1, new_h[0])
+                    aspect = new_w[0] / safe_h
                     vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
                 end
 
