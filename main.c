@@ -246,13 +246,20 @@ int main(int argc, char** argv) {
             int h = atomic_load_explicit(&g_engine.mailbox.glfw_arg_h, memory_order_relaxed);
 
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-            glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE); // <-- CHANGED TO TRUE
+            glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
             window = glfwCreateWindow(w, h, "VibeEngine Remote", NULL, NULL);
-            glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback); // <-- ADDED
+            glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
             glfwSetKeyCallback(window, glfw_key_callback);
 
             glfwSetCursorPosCallback(window, glfw_cursor_callback);
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+            // ---> THE FIX: Seed the mailbox with the initial framebuffer size! <---
+            int fb_w, fb_h;
+            glfwGetFramebufferSize(window, &fb_w, &fb_h);
+            atomic_store_explicit(&g_engine.mailbox.win_w, fb_w, memory_order_release);
+            atomic_store_explicit(&g_engine.mailbox.win_h, fb_h, memory_order_release);
+            // ----------------------------------------------------------------------
 
             // Fetch the instance Lua already published
             void* instance = atomic_load_explicit(&g_engine.mailbox.vk_instance, memory_order_acquire);
