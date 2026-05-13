@@ -179,57 +179,67 @@ function Renderer.ExecuteFrame(
     local imgIndex = f_state.pImageIndex[0]
 
     -- =====================================================================
-    -- 3. THE C-CORE DELEGATION (The Magic Happens Here)
+    -- 3. THE C-CORE DELEGATION 
     -- =====================================================================
     local packet = ffi.new("RenderPacket")
 
-    -- Dispatchable (Pointer)
     packet.cmd = cmd_buffer
-
-    -- Non-Dispatchable (Cast to uint64_t to cross the FFI safely)
     packet.comp_pipeline   = ffi.cast("uint64_t", p_compute.pipeline)
     packet.comp_layout     = ffi.cast("uint64_t", p_compute.pipelineLayout)
     packet.gfx_pipeline    = ffi.cast("uint64_t", p_gfx.pipeline)
     packet.gfx_layout      = ffi.cast("uint64_t", p_gfx.pipelineLayout)
     packet.desc_set        = ffi.cast("uint64_t", desc_state.set0)
     packet.vertex_buffer   = ffi.cast("uint64_t", unified_buffer)
-
     packet.swapchain_image = ffi.cast("uint64_t", swapchain.images[imgIndex])
     packet.swapchain_view  = ffi.cast("uint64_t", swapchain.imageViews[imgIndex])
-
-    -- NOTE: Make sure p_gfx actually returns depthImage and depthImageView!
     packet.depth_image     = ffi.cast("uint64_t", p_gfx.depthImage)
     packet.depth_view      = ffi.cast("uint64_t", p_gfx.depthImageView)
 
-    -- Dimensional Data
     packet.width  = swapchain.extent.width
     packet.height = swapchain.extent.height
-
-    -- Pass the pointer natively!
     packet.pc = pc_bytes
 
     -- FIRE THE NATIVE C RECORDER
     ffi.C.vibe_record_commands(packet, f_state.vkCmdBeginRendering, f_state.vkCmdEndRendering)
 
     -- =====================================================================
-    -- 4. QUEUE SUBMIT (Restore the missing sTypes!)
+    -- 4. QUEUE SUBMIT (Bulletproof Local Arrays via Stack Allocation)
     -- =====================================================================
     local renderFinished = sync_state.renderFinished[current_frame]
 
-    f_state.submitInfo.sType = 4 -- VK_STRUCTURE_TYPE_SUBMIT_INFO
-    f_state.submitInfo.pWaitSemaphores = f_state.pWaitSemaphoreSubmit
-    f_state.submitInfo.pCommandBuffers = f_state.cmdPtr
-    f_state.submitInfo.pSignalSemaphores = f_state.pSignalSemaphoreSubmit
+    local waitSemaphores   = ffi.new("VkSemaphore[1]", { imageAvailable })
+    local waitStages       = ffi.new("VkPipelineStageFlags[1]", { 1024 }) -- VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+    local signalSemaphores = ffi.new("VkSemaphore[1]", { renderFinished })
+    local submitCmds       = ffi.new("VkCommandBuffer[1]", { cmd_buffer })
 
-    assert(vk.vkQueueSubmit(queue, 1, f_state.pSubmitInfos, inFlightFence) == 0, "Failed to submit draw command buffer!")
+    local submitInfo = ffi.new("VkSubmitInfo[1]")
+    submitInfo[0].sType                = 4 -- VK_STRUCTURE_TYPE_SUBMIT_INFO
+    submitInfo[0].waitSemaphoreCount   = 1
+    submitInfo[0].pWaitSemaphores      = waitSemaphores
+    submitInfo[0].pWaitDstStageMask    = waitStages
+    submitInfo[0].commandBufferCount   = 1
+    submitInfo[0].pCommandBuffers      = submitCmds
+    submitInfo[0].signalSemaphoreCount = 1
+    submitInfo[0].pSignalSemaphores    = signalSemaphores
 
-    -- 5. PRESENT (Restore the missing sType!)
-    f_state.presentInfo.sType = 1000001001 -- VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
-    f_state.presentInfo.pSwapchains = f_state.pSwapchains
-    f_state.presentInfo.pWaitSemaphores = f_state.pSignalSemaphoreSubmit
-    f_state.presentInfo.pImageIndices = f_state.pImageIndex
+    local submitRes = vk.vkQueueSubmit(queue, 1, submitInfo, inFlightFence)
+    assert(submitRes == 0, "Failed to submit draw command buffer! Error: " .. tonumber(submitRes))
 
-    res = vk.vkQueuePresentKHR(queue, f_state.presentInfo)
+    -- =====================================================================
+    -- 5. PRESENT (Bulletproof Local Arrays)
+    -- =====================================================================
+    local swapchains = ffi.new("VkSwapchainKHR[1]", { swapchain.handle })
+    local imgIndices = ffi.new("uint32_t[1]", { imgIndex })
+
+    local presentInfo = ffi.new("VkPresentInfoKHR[1]")
+    presentInfo[0].sType              = 1000001001 -- VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
+    presentInfo[0].waitSemaphoreCount = 1
+    presentInfo[0].pWaitSemaphores    = signalSemaphores
+    presentInfo[0].swapchainCount     = 1
+    presentInfo[0].pSwapchains        = swapchains
+    presentInfo[0].pImageIndices      = imgIndices
+
+    res = vk.vkQueuePresentKHR(queue, presentInfo)
 
     if res == -1000001004 or res == 1000001003 then
         return false
