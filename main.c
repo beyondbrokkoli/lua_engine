@@ -115,7 +115,7 @@ void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, in
         uint32_t bit = 0;
         if (key == GLFW_KEY_W) bit = 1; else if (key == GLFW_KEY_S) bit = 2;
         else if (key == GLFW_KEY_A) bit = 4; else if (key == GLFW_KEY_D) bit = 8;
-
+        else if (key == GLFW_KEY_E) bit = 16; else if (key == GLFW_KEY_Q) bit = 32;
         if (bit) {
             uint32_t mask = atomic_load_explicit(&g_engine.mailbox.wasd_mask, memory_order_acquire);
             uint32_t new_mask;
