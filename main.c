@@ -241,7 +241,7 @@ int main(int argc, char** argv) {
             glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
             window = glfwCreateWindow(w, h, "VibeEngine Remote", NULL, NULL);
             glfwSetKeyCallback(window, glfw_key_callback);
-            
+
             // [ANCHOR] Inside CMD_BOOT_WINDOW block - [+ ADD +] cursor callback setup
             glfwSetCursorPosCallback(window, glfw_cursor_callback);
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
