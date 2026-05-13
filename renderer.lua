@@ -205,28 +205,26 @@ function Renderer.ExecuteFrame(
     packet.width  = swapchain.extent.width
     packet.height = swapchain.extent.height
 
-    -- Math Payload (Copy the values into the explicitly padded 128-byte struct)
+    -- Pass the pointer natively!
     packet.pc = pc_bytes
 
     -- FIRE THE NATIVE C RECORDER
     ffi.C.vibe_record_commands(packet, f_state.vkCmdBeginRendering, f_state.vkCmdEndRendering)
-    -- =====================================================================
 
-    -- 4. QUEUE SUBMIT
+    -- =====================================================================
+    -- 4. QUEUE SUBMIT (Restore the missing sTypes!)
+    -- =====================================================================
     local renderFinished = sync_state.renderFinished[current_frame]
 
-    f_state.pWaitSemaphoreSubmit[0] = imageAvailable
-    f_state.pSignalSemaphoreSubmit[0] = renderFinished
-    f_state.cmdPtr[0] = cmd_buffer
-
+    f_state.submitInfo.sType = 4 -- VK_STRUCTURE_TYPE_SUBMIT_INFO
     f_state.submitInfo.pWaitSemaphores = f_state.pWaitSemaphoreSubmit
     f_state.submitInfo.pCommandBuffers = f_state.cmdPtr
     f_state.submitInfo.pSignalSemaphores = f_state.pSignalSemaphoreSubmit
 
     assert(vk.vkQueueSubmit(queue, 1, f_state.pSubmitInfos, inFlightFence) == 0, "Failed to submit draw command buffer!")
 
-    -- 5. PRESENT
-    f_state.pSwapchains[0] = swapchain.handle
+    -- 5. PRESENT (Restore the missing sType!)
+    f_state.presentInfo.sType = 1000001001 -- VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
     f_state.presentInfo.pSwapchains = f_state.pSwapchains
     f_state.presentInfo.pWaitSemaphores = f_state.pSignalSemaphoreSubmit
     f_state.presentInfo.pImageIndices = f_state.pImageIndex

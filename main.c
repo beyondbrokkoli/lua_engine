@@ -221,7 +221,7 @@ typedef struct __attribute__((packed, aligned(16))) {
     uint64_t depth_view;
     uint32_t width;
     uint32_t height;
-    PushConstants pc;
+    PushConstants* pc; // <-- CHANGED TO POINTER!
 } RenderPacket;
 
 EXPORT void vibe_record_commands(RenderPacket* p, PFN_vkCmdBeginRenderingKHR pfnBegin, PFN_vkCmdEndRenderingKHR pfnEnd) {
@@ -230,13 +230,15 @@ EXPORT void vibe_record_commands(RenderPacket* p, PFN_vkCmdBeginRenderingKHR pfn
 
     // --- COMPUTE PASS ---
     vkCmdBindPipeline(p->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipeline)p->comp_pipeline);
-    
+
     VkDescriptorSet dset = (VkDescriptorSet)p->desc_set;
     vkCmdBindDescriptorSets(p->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipelineLayout)p->comp_layout, 0, 1, &dset, 0, NULL);
-    
-    vkCmdPushConstants(p->cmd, (VkPipelineLayout)p->comp_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), &p->pc);
-    
-    uint32_t workgroups = (p->pc.particle_count + 255) / 256;
+
+    // Pass the pointer directly
+    vkCmdPushConstants(p->cmd, (VkPipelineLayout)p->comp_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), p->pc);
+
+    // Use -> operator to read particle_count
+    uint32_t workgroups = (p->pc->particle_count + 255) / 256;
     vkCmdDispatch(p->cmd, workgroups, 1, 1);
 
     VkMemoryBarrier compBarrier = {
@@ -304,10 +306,12 @@ EXPORT void vibe_record_commands(RenderPacket* p, PFN_vkCmdBeginRenderingKHR pfn
     VkDeviceSize offset = 0;
     VkBuffer vbo = (VkBuffer)p->vertex_buffer;
     vkCmdBindVertexBuffers(p->cmd, 0, 1, &vbo, &offset);
-    
-    vkCmdPushConstants(p->cmd, (VkPipelineLayout)p->gfx_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), &p->pc);
-    
-    vkCmdDraw(p->cmd, p->pc.particle_count, 1, 0, 0);
+
+    // Pass the pointer directly
+    vkCmdPushConstants(p->cmd, (VkPipelineLayout)p->gfx_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), p->pc);
+
+    // Use -> operator to read particle_count
+    vkCmdDraw(p->cmd, p->pc->particle_count, 1, 0, 0);
 
     pfnEnd(p->cmd);
 
