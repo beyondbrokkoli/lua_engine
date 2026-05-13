@@ -228,8 +228,11 @@ local function DispatchLuaNative(vk, packet, f_state)
     f_state.vkCmdEndRendering(packet.cmd)
 
     -- Present Image Barrier
-    f_state.colorBarrierOut.image = ffi.cast("VkImage", packet.swapchain_image)
-    f_state.vkCmdPipelineBarrier(packet.cmd, 256, 4096, 0, 0, nil, 0, nil, 1, f_state.pColorBarrierOutArr)
+    -- 1. Explicitly update the array index, not the standalone struct!
+    f_state.pColorBarrierOutArr[0].image = ffi.cast("VkImage", packet.swapchain_image)
+
+    -- 2. Use 1024 (COLOR_ATTACHMENT_OUTPUT) instead of 256
+    f_state.vkCmdPipelineBarrier(packet.cmd, 1024, 4096, 0, 0, nil, 0, nil, 1, f_state.pColorBarrierOutArr)
 
     vk.vkEndCommandBuffer(packet.cmd)
 end
