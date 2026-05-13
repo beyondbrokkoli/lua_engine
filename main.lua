@@ -67,9 +67,14 @@ local function run_weaver()
         if #active_coroutines == 0 then break end
     end
 end
-local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, frame_state, master_buf, comp_state, gfx_state, desc_state)
+-- We now pass vk_state directly, and drop the standalone device/queue arguments
+local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame_state, master_buf, comp_state, gfx_state, desc_state)
     print("[LUA CO] Render Fiber Weaving...")
     local frame_count = 0
+
+    -- Extract what we need locally
+    local device = vk_state.device
+    local queue = vk_state.queue
 
     -- Persistent State Initialization
     local pc = ffi.new("PushConstants")
@@ -93,41 +98,34 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
 
     local is_resizing = false
     local last_resize_time = 0.0
-    local RESIZE_COOLDOWN = 0.25 -- 250ms of peace required before rebuild
+    local RESIZE_COOLDOWN = 0.25
 
-while ffi.C.vibe_get_is_running() == 1 do
+    while ffi.C.vibe_get_is_running() == 1 do
 
-        -- ==========================================================
-        -- 0. THE DEBOUNCE RITUAL (Catch OS spam & Vulkan Out-Of-Date)
-        -- ==========================================================
         if ffi.C.vibe_get_resize_flag() == 1 then
             is_resizing = true
             last_resize_time = os.clock()
         end
 
         if is_resizing then
-            -- Wait for the storm to pass...
             if (os.clock() - last_resize_time) > RESIZE_COOLDOWN then
                 print("[LUA CO] Window Stable. Initiating Vulkan Rebuild...")
 
-                -- 1. Halt the GPU completely
                 vk.vkDeviceWaitIdle(device)
 
-                -- 2. Fetch new dimensions
                 local new_w = ffi.new("int[1]")
                 local new_h = ffi.new("int[1]")
                 ffi.C.vibe_get_window_size(new_w, new_h)
 
                 if new_w[0] > 0 and new_h[0] > 0 then
-                    -- 3. Teardown old dependent pipelines
-                    graphics.Destroy(vk, device, gfx_state)
-                    swapchain_core.Destroy(vk, device, sc_state)
+                    -- ---> THE FIX: Pass vk_state instead of device <---
+                    graphics.Destroy(vk, vk_state, gfx_state)
+                    swapchain_core.Destroy(vk, vk_state, sc_state)
 
-                    -- 4. Re-forge the chain
-                    sc_state = swapchain_core.Init(vk, device, new_w[0], new_h[0])
-                    gfx_state = graphics.Init(vk, device, new_w[0], new_h[0], desc_state.pipelineLayout, sc_state.format)
+                    sc_state = swapchain_core.Init(vk, vk_state, new_w[0], new_h[0])
+                    gfx_state = graphics.Init(vk, vk_state, new_w[0], new_h[0], desc_state.pipelineLayout, sc_state.format)
+                    -- ---------------------------------------------------
 
-                    -- 5. Update Frame State (Viewport/Scissor)
                     frame_state.viewport[0].width = new_w[0]
                     frame_state.viewport[0].height = new_h[0]
                     frame_state.scissor[0].extent.width = new_w[0]
@@ -135,7 +133,6 @@ while ffi.C.vibe_get_is_running() == 1 do
                     frame_state.renderInfo[0].renderArea.extent.width = new_w[0]
                     frame_state.renderInfo[0].renderArea.extent.height = new_h[0]
 
-                    -- 6. Recalculate Projection Aspect Ratio
                     aspect = new_w[0] / new_h[0]
                     vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
                 end
@@ -243,8 +240,9 @@ local function command_glfw_fiber()
     local sync_state = renderer.InitSync(vk, device, 3)
     local frame_state = renderer.AllocateFrameState(vk, device, sc_state.extent.width, sc_state.extent.height)
 
+    -- THE FIX: Pass vk_state directly, remove the standalone device and vk_state.queue args
     start_fiber(function()
-        render_fiber(vk, device, sc_state, vk_state.queue, cmd_state, sync_state, frame_state, memory.Buffers["MASTER_GPU_BLOCK"], comp_state, gfx_state, desc_state)
+        render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame_state, memory.Buffers["MASTER_GPU_BLOCK"], comp_state, gfx_state, desc_state)
     end)
 
     local window_active = true
