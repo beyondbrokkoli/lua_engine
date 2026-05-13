@@ -11,7 +11,10 @@ ffi.cdef[[
     typedef PFN_vkCmdEndRendering PFN_vkCmdEndRenderingKHR;
 ]]
 local Renderer = {}
-
+Renderer.RenderMode = {
+    LUA_NATIVE = 0,
+    C_HOST = 1
+}
 function Renderer.InitSync(vk, device, frames_in_flight)
     print("[RENDERER] Forging Synchronization Primitives...")
 
