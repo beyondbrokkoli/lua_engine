@@ -1,4 +1,3 @@
-
 AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/lua_engine
 $ ./boot.exe
 [C-CORE] Booting Headless Worker...
@@ -13,7 +12,7 @@ $ ./boot.exe
 [LUA] Window Surface Linked from Main Thread!
 [LUA] Hardware GPU Selected!
 [LUA] Logical Device Created!
-[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x01935e60f1d8
+[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x0161fe6510a8
 [MEMORY] ReBAR Supported! Streaming directly to VRAM.
 [MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (256.00 MB)
 [SWAPCHAIN] Building the display chain...
@@ -31,6 +30,18 @@ $ ./boot.exe
 [LUA CO] Window Stable. Initiating Vulkan Rebuild...
 [TEARDOWN] Destroying Graphics Pipeline & Depth Buffer...
 [TEARDOWN] Destroying Swapchain & Image Views...
+[SWAPCHAIN] Building the display chain...
+[SWAPCHAIN] Created successfully with 3 images!
+[GRAPHICS] Building Reverse-Z Depth Buffer and Shader Modules...
+[GRAPHICS] Swarm Pipeline Successfully Compiled!
+[LUA CO] Rebuild Complete. Resuming Weaver.
 
-[LUA FATAL ERROR] main.lua:57: FATAL: FIBER CRASH -> .\swapchain.lua:91: 'struct VkDevice_T' has no member named 'device'
-[LUA-OS-THREAD] VM Destroyed.
+[VULKAN LAYER ENFORCER]
+SEVERITY: 4096
+MESSAGE: vkAcquireNextImageKHR(): Semaphore must not be currently signaled.
+The Vulkan spec states: If semaphore is not VK_NULL_HANDLE, it must be unsignaled (https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#VUID-vkAcquireNextImageKHR-semaphore-01286)
+
+[LUA IO] ESCAPE PRESSED. Executing Teardown...
+
+[C-CORE] Shutdown triggered. Waiting for Lua VM...
+[LUA-OS-THREAD] VM Destroye
