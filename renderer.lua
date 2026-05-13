@@ -3,9 +3,7 @@ local bit = require("bit")
 local cmd_factory = require("command_factory")
 local math = require("math")
 
--- ============================================================================
 -- ALIAS BRIDGE: Map KHR extension names to Core 1.3 definitions from parse.py
--- ============================================================================
 ffi.cdef[[
     typedef VkRenderingAttachmentInfo VkRenderingAttachmentInfoKHR;
     typedef VkRenderingInfo VkRenderingInfoKHR;
@@ -142,9 +140,7 @@ function Renderer.AllocateFrameState(vk, device, width, height)
     state.vkCmdEndRendering = ffi.cast("PFN_vkCmdEndRenderingKHR", vk.vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"))
     assert(state.vkCmdBeginRendering ~= ffi.NULL and state.vkCmdEndRendering ~= ffi.NULL, "FATAL: KHR Dynamic Rendering Pointers Missing!")
 
-    -- ==========================================
     -- GC-FREE HOISTED ALLOCATIONS
-    -- ==========================================
     state.pFence = ffi.new("VkFence[1]")
     state.pDescriptorSets = ffi.new("VkDescriptorSet[1]")
     state.pComputeBarrierArr = ffi.new("VkMemoryBarrier[1]")

@@ -75,12 +75,11 @@ EXPORT void vibe_mark_lua_finished() { atomic_store_explicit(&g_engine.mailbox.l
 EXPORT const char** vibe_get_glfw_extensions(uint32_t* count) { return glfwGetRequiredInstanceExtensions(count); }
 EXPORT void vibe_publish_vk_instance(void* instance) { atomic_store_explicit(&g_engine.mailbox.vk_instance, instance, memory_order_release); }
 EXPORT void* vibe_get_vk_surface() { return atomic_load_explicit(&g_engine.mailbox.vk_surface, memory_order_acquire); }
-// INJECT THIS BLOCK
+
 EXPORT void vibe_get_window_size(int* width, int* height) {
     *width = 1280;
     *height = 720;
 }
-// main.c - New Exports & Callbacks
 
 EXPORT void vibe_set_glfw_cmd(int cmd, int w, int h) {
     atomic_store_explicit(&g_engine.mailbox.glfw_arg_w, w, memory_order_relaxed);
@@ -92,7 +91,6 @@ EXPORT int vibe_get_last_key() {
     return atomic_exchange_explicit(&g_engine.mailbox.last_key_pressed, 0, memory_order_acquire);
 }
 
-// [ANCHOR] Right above glfw_key_callback - [+ ADD +] cursor callback
 double last_mx = 0.0, last_my = 0.0;
 bool first_mouse = true;
 
@@ -109,7 +107,6 @@ void glfw_cursor_callback(GLFWwindow* window, double xpos, double ypos) {
     while (!atomic_compare_exchange_weak_explicit(&g_engine.mailbox.mouse_dy, &current_dy, current_dy + dy, memory_order_release, memory_order_relaxed));
 }
 
-// [- REPLACE -] glfw_key_callback with WASD mask handling
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS || action == GLFW_RELEASE) {
         uint32_t bit = 0;
@@ -128,9 +125,7 @@ void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, in
         atomic_store_explicit(&g_engine.mailbox.last_key_pressed, GLFW_KEY_ESCAPE, memory_order_release);
     }
 }
-// ==========================================
-// 3. VULKAN VALIDATION LAYER ENFORCER
-// ==========================================
+
 VkDebugUtilsMessengerEXT g_debugMessenger = VK_NULL_HANDLE;
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(
@@ -242,7 +237,6 @@ int main(int argc, char** argv) {
             window = glfwCreateWindow(w, h, "VibeEngine Remote", NULL, NULL);
             glfwSetKeyCallback(window, glfw_key_callback);
 
-            // [ANCHOR] Inside CMD_BOOT_WINDOW block - [+ ADD +] cursor callback setup
             glfwSetCursorPosCallback(window, glfw_cursor_callback);
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
