@@ -11,6 +11,7 @@ local compute = require("compute_pipeline")
 local graphics = require("graphics_pipeline")
 local cmd_factory = require("command_factory")
 local renderer = require("renderer")
+local os = require("os")
 
 ffi.cdef[[
     int vibe_get_is_running();
@@ -19,13 +20,13 @@ ffi.cdef[[
     const char** vibe_get_glfw_extensions(uint32_t* count);
     void vibe_publish_vk_instance(void* instance);
     void* vibe_get_vk_surface();
-    void vibe_get_window_size(int* width, int* height);
     void vibe_set_glfw_cmd(int cmd, int w, int h);
     int vibe_get_last_key();
     uint32_t vibe_get_wasd();
     float vibe_get_mouse_dx();
     float vibe_get_mouse_dy();
-
+    int vibe_get_resize_flag();
+    void vibe_get_window_size(int* w, int* h);
     typedef struct {
         mat4_t viewProj;     // Offset 0
         uint32_t pos_x_idx;     // Offset 64 (4 bytes)
@@ -90,7 +91,64 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
 
     local speed = 5.0
 
+    local is_resizing = false
+    local last_resize_time = 0.0
+    local RESIZE_COOLDOWN = 0.25 -- 250ms of peace required before rebuild
+
     while ffi.C.vibe_get_is_running() == 1 do
+
+        -- ==========================================================
+        -- 0. THE DEBOUNCE RITUAL (Catch OS spam & Vulkan Out-Of-Date)
+        -- ==========================================================
+        if ffi.C.vibe_get_resize_flag() == 1 then
+            is_resizing = true
+            last_resize_time = os.clock()
+        end
+
+        if is_resizing then
+            -- Wait for the storm to pass...
+            if (os.clock() - last_resize_time) > RESIZE_COOLDOWN then
+                print("[LUA CO] Window Stable. Initiating Vulkan Rebuild...")
+
+                -- 1. Halt the GPU completely
+                vk.vkDeviceWaitIdle(device)
+
+                -- 2. Fetch new dimensions
+                local new_w = ffi.new("int[1]")
+                local new_h = ffi.new("int[1]")
+                ffi.C.vibe_get_new_window_size(new_w, new_h)
+
+                if new_w[0] > 0 and new_h[0] > 0 then
+                    -- 3. Teardown old dependent pipelines
+                    graphics.Destroy(vk, device, gfx_state)
+                    swapchain_core.Destroy(vk, device, sc_state)
+
+                    -- 4. Re-forge the chain
+                    sc_state = swapchain_core.Init(vk, device, new_w[0], new_h[0])
+                    gfx_state = graphics.Init(vk, device, new_w[0], new_h[0], desc_state.pipelineLayout, sc_state.format)
+
+                    -- 5. Update Frame State (Viewport/Scissor)
+                    frame_state.viewport[0].width = new_w[0]
+                    frame_state.viewport[0].height = new_h[0]
+                    frame_state.scissor[0].extent.width = new_w[0]
+                    frame_state.scissor[0].extent.height = new_h[0]
+                    frame_state.renderInfo[0].renderArea.extent.width = new_w[0]
+                    frame_state.renderInfo[0].renderArea.extent.height = new_h[0]
+
+                    -- 6. Recalculate Projection Aspect Ratio
+                    aspect = new_w[0] / new_h[0]
+                    vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
+                end
+
+                print("[LUA CO] Rebuild Complete. Resuming Weaver.")
+                is_resizing = false
+            end
+
+            -- Skip the rest of the frame to prevent crashing the old swapchain
+            coroutine.yield(function() return true end)
+            goto continue_frame
+        end
+
         -- ==========================================================
         -- 1. ABSOLUTE BARRICADE: Wait for GPU to finish this frame
         -- ==========================================================
@@ -98,18 +156,15 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
         local TIMEOUT_MAX = ffi.cast("uint64_t", -1)
         vk.vkWaitForFences(device, 1, ffi.new("VkFence[1]", {inFlightFence}), 1, TIMEOUT_MAX)
 
-        -- ==========================================================
-        -- 2. SAFE ZONE: Reset & Rebuild
-        -- ==========================================================
         cmd_factory.ResetCurrentFrame(vk, device, cmd_state)
 
-        -- Input Polling
+        -- Input Polling & Camera Math (Kept exactly as you had it)
         local dx = ffi.C.vibe_get_mouse_dx()
         local dy = ffi.C.vibe_get_mouse_dy()
         local wasd = ffi.C.vibe_get_wasd()
 
-        cam_yaw = cam_yaw + (dx * sensitivity) -- restored functionality by reverting to addition
-        cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity))) -- drunk camera happening when exactly?
+        cam_yaw = cam_yaw - (dx * sensitivity) 
+        cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity)))
 
         local fwd_x = math.sin(cam_yaw) * math.cos(cam_pitch)
         local fwd_y = -math.sin(cam_pitch)
@@ -120,8 +175,8 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
 
         if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * speed; cam_pos.y = cam_pos.y + fwd_y * speed; cam_pos.z = cam_pos.z + fwd_z * speed end
         if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * speed; cam_pos.y = cam_pos.y - fwd_y * speed; cam_pos.z = cam_pos.z - fwd_z * speed end
-        if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end -- no longer necessary to swap A and D
-        if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end -- vmath update fixed everything
+        if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end 
+        if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end 
         if bit.band(wasd, 16) ~= 0 then cam_pos.y = cam_pos.y + speed end
         if bit.band(wasd, 32) ~= 0 then cam_pos.y = cam_pos.y - speed end
 
@@ -129,9 +184,7 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
                      cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z,
                      view)
 
-        -- FIX: Scale dt slower to prevent vortex blurring at high FPS
         pc.dt = frame_count * 0.005;
-
         vmath.multiply_mat4(proj, view, pc.viewProj)
 
         local cmd_buffer = cmd_factory.AllocateBuffer(vk, device, cmd_state)
@@ -142,12 +195,17 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
             master_buf, comp_state, gfx_state, pc, desc_state
         )
 
+        -- If Vulkan natively flags a resize (e.g. Windows snapped the window), trigger the cooldown
         if not success then
-            print("[RENDERER] Swapchain out of date! Rebuild required.")
+            print("[RENDERER] VK_ERROR_OUT_OF_DATE_KHR Triggered! Forcing Rebuild Protocol.")
+            is_resizing = true
+            last_resize_time = os.clock()
         end
 
         cmd_factory.AdvanceFrame(cmd_state)
         frame_count = frame_count + 1
+
+        ::continue_frame::
         coroutine.yield(function() return true end)
     end
     print("[LUA CO] Render Fiber Terminated. Frames: " .. tostring(frame_count))

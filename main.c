@@ -58,6 +58,11 @@ typedef struct {
     _Atomic uint32_t wasd_mask;
     _Atomic float mouse_dx;
     _Atomic float mouse_dy;
+
+    // --- NEW: Resize State ---
+    _Atomic int window_resized;
+    _Atomic int win_w;
+    _Atomic int win_h;
 } IPC_Mailbox;
 
 typedef struct {
@@ -75,11 +80,6 @@ EXPORT void vibe_mark_lua_finished() { atomic_store_explicit(&g_engine.mailbox.l
 EXPORT const char** vibe_get_glfw_extensions(uint32_t* count) { return glfwGetRequiredInstanceExtensions(count); }
 EXPORT void vibe_publish_vk_instance(void* instance) { atomic_store_explicit(&g_engine.mailbox.vk_instance, instance, memory_order_release); }
 EXPORT void* vibe_get_vk_surface() { return atomic_load_explicit(&g_engine.mailbox.vk_surface, memory_order_acquire); }
-
-EXPORT void vibe_get_window_size(int* width, int* height) {
-    *width = 1280;
-    *height = 720;
-}
 
 EXPORT void vibe_set_glfw_cmd(int cmd, int w, int h) {
     atomic_store_explicit(&g_engine.mailbox.glfw_arg_w, w, memory_order_relaxed);
@@ -181,7 +181,20 @@ EXPORT void vibe_eject_validation_layers(void* instance) {
 EXPORT uint32_t vibe_get_wasd() { return atomic_load_explicit(&g_engine.mailbox.wasd_mask, memory_order_acquire); }
 EXPORT float vibe_get_mouse_dx() { return atomic_exchange_explicit(&g_engine.mailbox.mouse_dx, 0.0f, memory_order_acquire); }
 EXPORT float vibe_get_mouse_dy() { return atomic_exchange_explicit(&g_engine.mailbox.mouse_dy, 0.0f, memory_order_acquire); }
+EXPORT int vibe_get_resize_flag() { return atomic_exchange_explicit(&g_engine.mailbox.window_resized, 0, memory_order_acquire); }
+EXPORT void vibe_get_window_size(int* w, int* h) {
+    *w = atomic_load_explicit(&g_engine.mailbox.win_w, memory_order_acquire);
+    *h = atomic_load_explicit(&g_engine.mailbox.win_h, memory_order_acquire);
+}
 
+void glfw_framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    // If the window is minimized, width/height will be 0. We ignore 0.
+    if (width == 0 || height == 0) return;
+
+    atomic_store_explicit(&g_engine.mailbox.win_w, width, memory_order_release);
+    atomic_store_explicit(&g_engine.mailbox.win_h, height, memory_order_release);
+    atomic_store_explicit(&g_engine.mailbox.window_resized, 1, memory_order_release);
+}
 void vibe_init_mailbox() {
     atomic_init(&g_engine.mailbox.ready_index, 0);
     atomic_init(&g_engine.mailbox.is_running, 1);
@@ -233,8 +246,9 @@ int main(int argc, char** argv) {
             int h = atomic_load_explicit(&g_engine.mailbox.glfw_arg_h, memory_order_relaxed);
 
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-            glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+            glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE); // <-- CHANGED TO TRUE
             window = glfwCreateWindow(w, h, "VibeEngine Remote", NULL, NULL);
+            glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback); // <-- ADDED
             glfwSetKeyCallback(window, glfw_key_callback);
 
             glfwSetCursorPosCallback(window, glfw_cursor_callback);
