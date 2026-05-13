@@ -27,16 +27,13 @@ ffi.cdef[[
     float vibe_get_mouse_dy();
 
     typedef struct {
-        uint32_t pos_x_idx;
-        uint32_t pos_y_idx;
-        uint32_t pos_z_idx;
-        uint32_t particle_count;
-
-        float dt;
-        uint32_t _pad[3];
-
-        float viewProj[16];
-    } PushConstants;
+        float viewProj[16];     // Offset 0  (64 bytes, 16-byte aligned natively)
+        uint32_t pos_x_idx;     // Offset 64 (4 bytes)
+        uint32_t pos_y_idx;     // Offset 68 (4 bytes)
+        uint32_t pos_z_idx;     // Offset 72 (4 bytes)
+        uint32_t particle_count;// Offset 76 (4 bytes)
+        float dt;               // Offset 80 (4 bytes)
+    } PushConstants;            // Total: 84 bytes (Well under 128B minimum max)
 ]]
 
 local active_coroutines = {}

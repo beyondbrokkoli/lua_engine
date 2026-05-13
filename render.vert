@@ -7,25 +7,14 @@ layout(std430, binding = 0) readonly buffer MegaBuffer {
 
 };
 
-
 layout(push_constant) uniform PushConstants {
-
+    mat4 viewProj;
     uint pos_x_idx;
-
     uint pos_y_idx;
-
     uint pos_z_idx;
-
     uint particle_count;
-
     float dt;
-
-    uint _pad[3];  // Explicit alignment padding to match Lua struct
-
-    mat4 viewProj; // The 64-byte matrix
-
 } pc;
-
 
 layout(location = 0) out vec4 fragColor;
 
