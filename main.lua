@@ -12,7 +12,6 @@ local graphics = require("graphics_pipeline")
 local cmd_factory = require("command_factory")
 local renderer = require("renderer")
 
--- [ANCHOR] At top of file, inside ffi.cdef - [+ ADD +] new function declarations
 ffi.cdef[[
     int vibe_get_is_running();
     void vibe_trigger_shutdown();
@@ -87,14 +86,12 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
     local aspect = sc_state.extent.width / sc_state.extent.height
     vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
 
-    -- FIND THIS BLOCK in render_fiber:
     local cam_pos = {x = 0.0, y = 0.0, z = -600.0}
     local cam_yaw = 0.0
     local cam_pitch = 0.0
     local sensitivity = 0.002
 
-    -- FIX: Throttle from 5.0 to 0.2 to prevent immediate Z-plane clipping
-    local speed = 0.2
+    local speed = 5.0
 
     while ffi.C.vibe_get_is_running() == 1 do
         -- ==========================================================
@@ -189,11 +186,10 @@ local function command_glfw_fiber()
     local gfx_state = graphics.Init(vk, vk_state, pWidth[0], pHeight[0], desc_state.pipelineLayout, sc_state.format)
     local cmd_state = cmd_factory.Init(vk, device, vk_state.qIndex, 3)
 
-    -- >>> NEW: RENDERER INITIALIZATION <<<
+    -- RENDERER INITIALIZATION
     local sync_state = renderer.InitSync(vk, device, 3)
     local frame_state = renderer.AllocateFrameState(vk, device, sc_state.extent.width, sc_state.extent.height)
-    
-    -- [ANCHOR] Right after AllocateFrameState - [+ ADD +] particle injection
+
     print("[LUA CO] Injecting 1,000,000 Particles into ReBAR Arena (SoA Layout)...")
     local float_ptr = ffi.cast("float*", memory.Mapped["MASTER_GPU_BLOCK"])
     local particle_count = 1000000
