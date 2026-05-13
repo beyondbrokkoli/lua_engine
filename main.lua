@@ -216,7 +216,8 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
                 vk, device, queue, sc_state, cmd_buffer,
                 cmd_state.current_frame, sync_state, frame_state,
                 master_buf, comp_state, gfx_state, pc, desc_state,
-                renderer.RenderMode.LUA_NATIVE  -- <-- Swap this to C_HOST whenever you want!
+                -- renderer.RenderMode.LUA_NATIVE  -- <-- Swap this to C_HOST whenever you want!
+                renderer.RenderMode.C_HOST
             )
             -- If Vulkan natively flags a resize (e.g. Windows snapped the window), trigger the cooldown
             if not success then
