@@ -201,7 +201,7 @@ function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current
 
     f_state.pVertexBuffers[0] = unified_buffer
     vk.vkCmdBindVertexBuffers(cmd_buffer, 0, 1, f_state.pVertexBuffers, f_state.offsets)
-    vk.vkCmdPushConstants(cmd_buffer, p_gfx.pipelineLayout, 33, 0, 96, pc_bytes)
+    vk.vkCmdPushConstants(cmd_buffer, p_gfx.pipelineLayout, 33, 0, 84, pc_bytes)
     vk.vkCmdDraw(cmd_buffer, pc_bytes.particle_count, 1, 0, 0)
 
     f_state.vkCmdEndRendering(cmd_buffer)
