@@ -16,22 +16,27 @@ local Renderer = {}
 
 function Renderer.InitSync(vk, device, frames_in_flight)
     print("[RENDERER] Forging Synchronization Primitives...")
-    local imageAvailable = ffi.new("VkSemaphore[?]", frames_in_flight)
-    local renderFinished = ffi.new("VkSemaphore[?]", frames_in_flight)
+    
+    local max_swapchain_images = 10
+    local imageAvailable = ffi.new("VkSemaphore[?]", max_swapchain_images)
+    local renderFinished = ffi.new("VkSemaphore[?]", max_swapchain_images)
     local inFlight = ffi.new("VkFence[?]", frames_in_flight)
-
+    
     local semInfo = ffi.new("VkSemaphoreCreateInfo", { sType = 9 })
     local fenceInfo = ffi.new("VkFenceCreateInfo", {
         sType = 8,
         flags = 1
     })
-
-    for i = 0, frames_in_flight - 1 do
+    
+    for i = 0, max_swapchain_images - 1 do
         assert(vk.vkCreateSemaphore(device, semInfo, nil, imageAvailable + i) == 0)
         assert(vk.vkCreateSemaphore(device, semInfo, nil, renderFinished + i) == 0)
+    end
+    
+    for i = 0, frames_in_flight - 1 do
         assert(vk.vkCreateFence(device, fenceInfo, nil, inFlight + i) == 0)
     end
-
+    
     return {
         imageAvailable = imageAvailable,
         renderFinished = renderFinished,
@@ -146,73 +151,60 @@ end
 function Renderer.ExecuteFrame(vk, device, queue, swapchain, cmd_buffer, current_frame, sync, f_state, unified_buffer, p_compute, p_gfx, pc_bytes, desc_state)
     local inFlightFence = sync.inFlight[current_frame]
     local imageAvailable = sync.imageAvailable[current_frame]
-    local renderFinished = sync.renderFinished[current_frame]
-
     local TIMEOUT_MAX = ffi.cast("uint64_t", -1)
+    
     local res = vk.vkAcquireNextImageKHR(device, swapchain.handle, TIMEOUT_MAX, imageAvailable, nil, f_state.pImageIndex)
     if res ~= 0 and res ~= 1000001004 then return false end
-
+    
     vk.vkResetFences(device, 1, ffi.new("VkFence[1]", {inFlightFence}))
     vk.vkResetCommandBuffer(cmd_buffer, 0)
-
     vk.vkBeginCommandBuffer(cmd_buffer, f_state.cmdBeginInfo)
-
-    -- === COMPUTE PASS ===
+    
     vk.vkCmdBindPipeline(cmd_buffer, 1, p_compute.pipeline)
     vk.vkCmdBindDescriptorSets(cmd_buffer, 1, p_compute.pipelineLayout, 0, 1, ffi.new("VkDescriptorSet[1]", {desc_state.set0}), 0, nil)
     vk.vkCmdPushConstants(cmd_buffer, desc_state.pipelineLayout, 33, 0, 96, pc_bytes)
     
-    -- FIX: Dynamic thread dispatch matching Lua payload
     local workgroups = math.ceil(pc_bytes.particle_count / 256)
     vk.vkCmdDispatch(cmd_buffer, workgroups, 1, 1)
-
     vk.vkCmdPipelineBarrier(cmd_buffer, 2048, bit.bor(128, 65536), 0, 1, ffi.new("VkMemoryBarrier[1]", {f_state.computeBarrier}), 0, nil, 0, nil)
-
-    -- === GRAPHICS BARRIERS ===
+    
     local imgIndex = f_state.pImageIndex[0]
     f_state.preBarriers[0].image = swapchain.images[imgIndex]
     f_state.preBarriers[1].image = p_gfx.depthImage
-
     vk.vkCmdPipelineBarrier(cmd_buffer, 1, bit.bor(256, 1024), 0, 0, nil, 0, nil, 2, f_state.preBarriers)
-
-    -- === DYNAMIC RENDERING GRAPHICS PASS ===
+    
     f_state.colorAttachment[0].imageView = swapchain.imageViews[imgIndex]
     f_state.depthAttachment[0].imageView = p_gfx.depthImageView
-
     f_state.vkCmdBeginRendering(cmd_buffer, f_state.renderInfo)
-
+    
     vk.vkCmdBindPipeline(cmd_buffer, 0, p_gfx.pipeline)
     vk.vkCmdBindDescriptorSets(cmd_buffer, 0, p_gfx.pipelineLayout, 0, 1, ffi.new("VkDescriptorSet[1]", {desc_state.set0}), 0, nil)
-
     vk.vkCmdSetViewport(cmd_buffer, 0, 1, f_state.viewport)
     vk.vkCmdSetScissor(cmd_buffer, 0, 1, f_state.scissor)
-
     vk.vkCmdBindVertexBuffers(cmd_buffer, 0, 1, ffi.new("VkBuffer[1]", {unified_buffer}), f_state.offsets)
     vk.vkCmdPushConstants(cmd_buffer, p_gfx.pipelineLayout, 33, 0, 96, pc_bytes)
-
+    
     vk.vkCmdDraw(cmd_buffer, pc_bytes.particle_count, 1, 0, 0)
-
     f_state.vkCmdEndRendering(cmd_buffer)
-
-    -- === OUTPUT BARRIER ===
+    
     f_state.colorBarrierOut.image = swapchain.images[imgIndex]
     vk.vkCmdPipelineBarrier(cmd_buffer, 1024, 8192, 0, 0, nil, 0, nil, 1, ffi.new("VkImageMemoryBarrier[1]", {f_state.colorBarrierOut}))
-
     vk.vkEndCommandBuffer(cmd_buffer)
-
+    
+    local renderFinished = sync.renderFinished[imgIndex]
+    
     f_state.cmdPtr[0] = cmd_buffer
     f_state.submitInfo.pWaitSemaphores = ffi.new("VkSemaphore[1]", {imageAvailable})
     f_state.submitInfo.pCommandBuffers = f_state.cmdPtr
     f_state.submitInfo.pSignalSemaphores = ffi.new("VkSemaphore[1]", {renderFinished})
-
+    
     vk.vkQueueSubmit(queue, 1, ffi.new("VkSubmitInfo[1]", {f_state.submitInfo}), inFlightFence)
-
+    
     f_state.presentInfo.pWaitSemaphores = ffi.new("VkSemaphore[1]", {renderFinished})
     f_state.presentInfo.pSwapchains = ffi.new("VkSwapchainKHR[1]", {swapchain.handle})
     f_state.presentInfo.pImageIndices = f_state.pImageIndex
-
+    
     vk.vkQueuePresentKHR(queue, f_state.presentInfo)
-
     return true
 end
 
@@ -220,10 +212,14 @@ function Renderer.Destroy(vk, device, sync, frames_in_flight)
     print("[TEARDOWN] Dismantling Renderer Sync Objects...")
     vk.vkDeviceWaitIdle(device)
     if not sync then return end
-
-    for i = 0, frames_in_flight - 1 do
+    
+    local max_swapchain_images = 10
+    for i = 0, max_swapchain_images - 1 do
         vk.vkDestroySemaphore(device, sync.imageAvailable[i], nil)
         vk.vkDestroySemaphore(device, sync.renderFinished[i], nil)
+    end
+    
+    for i = 0, frames_in_flight - 1 do
         vk.vkDestroyFence(device, sync.inFlight[i], nil)
     end
 end
