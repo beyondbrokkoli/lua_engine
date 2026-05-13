@@ -158,7 +158,7 @@ while ffi.C.vibe_get_is_running() == 1 do
             local dy = ffi.C.vibe_get_mouse_dy()
             local wasd = ffi.C.vibe_get_wasd()
 
-            cam_yaw = cam_yaw - (dx * sensitivity)
+            cam_yaw = cam_yaw + (dx * sensitivity)
             cam_pitch = math.max(-1.5, math.min(1.5, cam_pitch + (dy * sensitivity)))
 
             local fwd_x = math.sin(cam_yaw) * math.cos(cam_pitch)
