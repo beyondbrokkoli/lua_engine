@@ -2,83 +2,77 @@ local ffi = require("ffi")
 local math = require("math")
 local vmath = {}
 
-function vmath.perspective_inf_revz(fov_degrees, aspect, near, out)
-    local f = 1.0 / math.tan(math.rad(fov_degrees) * 0.5)
+-- Define 16-byte aligned structs for SIMD readiness in C
+ffi.cdef[[
+    typedef struct __attribute__((aligned(16))) {
+        float x, y, z, w;
+    } vec4_t;
 
-    -- Row 0
-    out[0]  = f / aspect
-    out[1]  = 0.0
-    out[2]  = 0.0
-    out[3]  = 0.0
-    
-    -- Row 1 (-f to correct Vulkan's inverted Y)
-    out[4]  = 0.0
-    out[5]  = -f
-    out[6]  = 0.0
-    out[7]  = 0.0
-    
-    -- Row 2 (Z-Clip mapping to 'near')
-    out[8]  = 0.0
-    out[9]  = 0.0
-    out[10] = 0.0
-    out[11] = near
-    
-    -- Row 3 (W-Clip mapping to -Z)
-    out[12] = 0.0
-    out[13] = 0.0
-    out[14] = -1.0
-    out[15] = 0.0
-end
+    typedef struct __attribute__((aligned(64))) {
+        float m[16];
+    } mat4_t;
+]]
 
-function vmath.lookAt(eye_x, eye_y, eye_z, center_x, center_y, center_z, out)
-    local fx = center_x - eye_x
-    local fy = center_y - eye_y
-    local fz = center_z - eye_z
-    local f_inv = 1.0 / math.sqrt(fx*fx + fy*fy + fz*fz)
-    fx = fx * f_inv; fy = fy * f_inv; fz = fz * f_inv
+-- Pre-allocate ALL workspace memory to strictly prevent Garbage Collection
+local temp_f   = ffi.new("vec4_t")
+local temp_u   = ffi.new("vec4_t")
+local temp_r   = ffi.new("vec4_t")
+local temp_mat = ffi.new("mat4_t")
 
-    -- Absolute Up Vector fallback to prevent NaN Gimbal Lock
-    local up_x = 0.0; local up_y = 1.0; local up_z = 0.0
-    if math.abs(fx) < 0.001 and math.abs(fz) < 0.001 then
-        if fy > 0 then up_z = -1.0 else up_z = 1.0 end
-        up_y = 0.0
+function vmath.lookAt(eye, center, up, out_mat)
+    -- Forward Vector
+    temp_f.x = center.x - eye.x
+    temp_f.y = center.y - eye.y
+    temp_f.z = center.z - eye.z
+    local f_inv = 1.0 / math.sqrt(temp_f.x^2 + temp_f.y^2 + temp_f.z^2)
+    temp_f.x = temp_f.x * f_inv; temp_f.y = temp_f.y * f_inv; temp_f.z = temp_f.z * f_inv
+
+    -- Gimbal Lock Prevention (Imported from slow version)
+    local up_x = up.x; local up_y = up.y; local up_z = up.z
+    if math.abs(temp_f.x) < 0.001 and math.abs(temp_f.z) < 0.001 then
+        if temp_f.y > 0 then up_z = -1.0 else up_z = 1.0 end
+        up_y = 0.0; up_x = 0.0
     end
 
-    -- Right Vector: cross(fwd, up)
-    local rx = fy * up_z - fz * up_y
-    local ry = fz * up_x - fx * up_z
-    local rz = fx * up_y - fy * up_x
-    local r_inv = 1.0 / math.sqrt(rx*rx + ry*ry + rz*rz)
-    rx = rx * r_inv; ry = ry * r_inv; rz = rz * r_inv
+    -- Right Vector
+    temp_r.x = up_y * temp_f.z - up_z * temp_f.y
+    temp_r.y = up_z * temp_f.x - up_x * temp_f.z
+    temp_r.z = up_x * temp_f.y - up_y * temp_f.x
+    local r_inv = 1.0 / math.sqrt(temp_r.x^2 + temp_r.y^2 + temp_r.z^2)
+    temp_r.x = temp_r.x * r_inv; temp_r.y = temp_r.y * r_inv; temp_r.z = temp_r.z * r_inv
 
-    -- True Up Vector: cross(right, fwd)
-    local ux = ry * fz - rz * fy
-    local uy = rz * fx - rx * fz
-    local uz = rx * fy - ry * fx
+    -- True Up Vector
+    temp_u.x = temp_f.y * temp_r.z - temp_f.z * temp_r.y
+    temp_u.y = temp_f.z * temp_r.x - temp_f.x * temp_r.z
+    temp_u.z = temp_f.x * temp_r.y - temp_f.y * temp_r.x
 
-    -- Row 0: Right
-    out[0]  = rx; out[1]  = ry; out[2]  = rz; out[3]  = -(rx*eye_x + ry*eye_y + rz*eye_z)
-    -- Row 1: Up
-    out[4]  = ux; out[5]  = uy; out[6]  = uz; out[7]  = -(ux*eye_x + uy*eye_y + uz*eye_z)
-    -- Row 2: Forward (-Z mapping)
-    out[8]  = -fx; out[9] = -fy; out[10]= -fz; out[11] = (fx*eye_x + fy*eye_y + fz*eye_z)
-    -- Row 3: Identity padding
-    out[12] = 0.0; out[13] = 0.0; out[14] = 0.0; out[15] = 1.0
+    -- Direct contiguous memory write
+    out_mat.m[0] = temp_r.x;  out_mat.m[4] = temp_r.y;  out_mat.m[8]  = temp_r.z;  out_mat.m[12] = -(temp_r.x*eye.x + temp_r.y*eye.y + temp_r.z*eye.z)
+    out_mat.m[1] = temp_u.x;  out_mat.m[5] = temp_u.y;  out_mat.m[9]  = temp_u.z;  out_mat.m[13] = -(temp_u.x*eye.x + temp_u.y*eye.y + temp_u.z*eye.z)
+    out_mat.m[2] = -temp_f.x; out_mat.m[6] = -temp_f.y; out_mat.m[10] = -temp_f.z; out_mat.m[14] = (temp_f.x*eye.x + temp_f.y*eye.y + temp_f.z*eye.z)
+    out_mat.m[3] = 0.0;       out_mat.m[7] = 0.0;       out_mat.m[11] = 0.0;       out_mat.m[15] = 1.0
 end
 
-function vmath.multiply_mat4(a, b, out)
-    -- Intermediate buffer prevents memory aliasing if 'out' == 'a' or 'b'
-    local temp = ffi.new("float[16]")
+function vmath.perspective_inf_revz(fov_degrees, aspect, near, out_mat)
+    local f = 1.0 / math.tan(math.rad(fov_degrees) * 0.5)
+
+    out_mat.m[0] = f / aspect; out_mat.m[1] = 0.0; out_mat.m[2]  = 0.0; out_mat.m[3]  = 0.0
+    out_mat.m[4] = 0.0;        out_mat.m[5] = -f;  out_mat.m[6]  = 0.0; out_mat.m[7]  = 0.0
+    out_mat.m[8] = 0.0;        out_mat.m[9] = 0.0; out_mat.m[10] = 0.0; out_mat.m[11] = near
+    out_mat.m[12]= 0.0;        out_mat.m[13]= 0.0; out_mat.m[14] = -1.0;out_mat.m[15] = 0.0
+end
+
+function vmath.multiply_mat4(a, b, out_mat)
     for i = 0, 3 do
         for j = 0, 3 do
-            temp[i*4 + j] = a[i*4 + 0] * b[0*4 + j] +
-                            a[i*4 + 1] * b[1*4 + j] +
-                            a[i*4 + 2] * b[2*4 + j] +
-                            a[i*4 + 3] * b[3*4 + j]
+            temp_mat.m[i*4 + j] = a.m[i*4 + 0] * b.m[0*4 + j] +
+                                  a.m[i*4 + 1] * b.m[1*4 + j] +
+                                  a.m[i*4 + 2] * b.m[2*4 + j] +
+                                  a.m[i*4 + 3] * b.m[3*4 + j]
         end
     end
     for k = 0, 15 do
-        out[k] = temp[k]
+        out_mat.m[k] = temp_mat.m[k]
     end
 end
 

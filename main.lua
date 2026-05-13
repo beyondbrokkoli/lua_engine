@@ -189,25 +189,6 @@ local function command_glfw_fiber()
     local sync_state = renderer.InitSync(vk, device, 3)
     local frame_state = renderer.AllocateFrameState(vk, device, sc_state.extent.width, sc_state.extent.height)
 
-    print("[LUA CO] Injecting 1,000,000 Particles into ReBAR Arena (SoA Layout)...")
-    local float_ptr = ffi.cast("float*", memory.Mapped["MASTER_GPU_BLOCK"])
-    local particle_count = 1000000
-    local radius = 300.0
-    math.randomseed(1337)
-    for i = 0, particle_count - 1 do
-        local u = math.random()
-        local v = math.random()
-        local theta = u * 2.0 * math.pi
-        local phi = math.acos(2.0 * v - 1.0)
-        local r = radius * math.pow(math.random(), 0.333)
-
-        float_ptr[0 + i]       = r * math.sin(phi) * math.cos(theta) -- X
-        float_ptr[1000000 + i] = r * math.sin(phi) * math.sin(theta) -- Y
-        float_ptr[2000000 + i] = r * math.cos(phi)                   -- Z
-    end
-    renderer.SubmitHostToDeviceBarrier(vk, device, vk_state.queue, cmd_state, memory.Buffers["MASTER_GPU_BLOCK"])
-    print("[LUA CO] Injection Complete & Memory Barrier Flushed.")
-
     start_fiber(function()
         render_fiber(vk, device, sc_state, vk_state.queue, cmd_state, sync_state, frame_state, memory.Buffers["MASTER_GPU_BLOCK"], comp_state, gfx_state, desc_state)
     end)
