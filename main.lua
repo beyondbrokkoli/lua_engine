@@ -27,7 +27,7 @@ ffi.cdef[[
     float vibe_get_mouse_dy();
 
     typedef struct {
-        float viewProj[16];     // Offset 0  (64 bytes, 16-byte aligned natively)
+        mat4_t viewProj;     // Offset 0
         uint32_t pos_x_idx;     // Offset 64 (4 bytes)
         uint32_t pos_y_idx;     // Offset 68 (4 bytes)
         uint32_t pos_z_idx;     // Offset 72 (4 bytes)
@@ -77,8 +77,8 @@ local function render_fiber(vk, device, sc_state, queue, cmd_state, sync_state, 
     pc.pos_z_idx = 2000000
     pc.particle_count = 1000000
 
-    local proj = ffi.new("float[16]")
-    local view = ffi.new("float[16]")
+    local proj = ffi.new("mat4_t")
+    local view = ffi.new("mat4_t")
 
     local aspect = sc_state.extent.width / sc_state.extent.height
     vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
