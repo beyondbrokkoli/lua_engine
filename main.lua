@@ -40,7 +40,7 @@ ffi.cdef[[
     } PushConstants;             // Total: 128 bytes
 
     typedef struct __attribute__((packed, aligned(16))) {
-        void* cmd;
+        void* cmd;                 // (Or VkCommandBuffer cmd; in main.c)
         uint64_t comp_pipeline;
         uint64_t comp_layout;
         uint64_t gfx_pipeline;
@@ -53,7 +53,7 @@ ffi.cdef[[
         uint64_t depth_view;
         uint32_t width;
         uint32_t height;
-        PushConstants* pc;
+        uint8_t pc_payload[128];   // THE NEW RAW PAYLOAD
     } RenderPacket;
 
     void vibe_record_commands(RenderPacket* p, void* pfnBegin, void* pfnEnd);

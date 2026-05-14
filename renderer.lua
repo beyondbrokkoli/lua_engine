@@ -190,12 +190,15 @@ local function DispatchLuaNative(vk, packet, f_state)
     local dset = ffi.new("VkDescriptorSet[1]", ffi.cast("VkDescriptorSet", packet.desc_set))
     f_state.vkCmdBindDescriptorSets(packet.cmd, 1, ffi.cast("VkPipelineLayout", packet.comp_layout), 0, 1, dset, 0, nil)
 
-    -- Push Constants FFI Passthrough (Preserves 128-byte alignment)
-    f_state.vkCmdPushConstants(packet.cmd, ffi.cast("VkPipelineLayout", packet.comp_layout),
-                          bit.bor(1, 32), -- VERTEX | COMPUTE
-                          0, 128, packet.pc)
+    -- 1. Cast the raw array back to PushConstants* locally
+    local local_pc = ffi.cast("PushConstants*", packet.pc_payload)
 
-    local workgroups = math.ceil(packet.pc.particle_count / 256)
+    -- 2. Push the raw bytes directly
+    f_state.vkCmdPushConstants(packet.cmd, ffi.cast("VkPipelineLayout", packet.comp_layout),
+                          bit.bor(1, 32), 0, 128, packet.pc_payload)
+
+    -- 3. Read particle count from the casted pointer
+    local workgroups = math.ceil(local_pc.particle_count / 256)
     f_state.vkCmdDispatch(packet.cmd, workgroups, 1, 1)
 
     -- Compute to Vertex Barrier
@@ -221,9 +224,11 @@ local function DispatchLuaNative(vk, packet, f_state)
     local vbo = ffi.new("VkBuffer[1]", ffi.cast("VkBuffer", packet.vertex_buffer))
     f_state.vkCmdBindVertexBuffers(packet.cmd, 0, 1, vbo, f_state.offsets)
 
-    f_state.vkCmdPushConstants(packet.cmd, ffi.cast("VkPipelineLayout", packet.gfx_layout), bit.bor(1, 32), 0, 128, packet.pc)
+    -- 4. Push the raw bytes directly
+    f_state.vkCmdPushConstants(packet.cmd, ffi.cast("VkPipelineLayout", packet.gfx_layout), bit.bor(1, 32), 0, 128, packet.pc_payload)
 
-    f_state.vkCmdDraw(packet.cmd, packet.pc.particle_count, 1, 0, 0)
+    -- 5. Read particle count from the casted pointer
+    f_state.vkCmdDraw(packet.cmd, local_pc.particle_count, 1, 0, 0)
 
     f_state.vkCmdEndRendering(packet.cmd)
 
@@ -272,7 +277,9 @@ function Renderer.ExecuteFrame(
     packet.depth_view      = ffi.cast("uint64_t", p_gfx.depthImageView)
     packet.width  = swapchain.extent.width
     packet.height = swapchain.extent.height
-    packet.pc = pc_bytes
+
+    -- THE MAGIC: Blast the 128 bytes by value!
+    ffi.copy(packet.pc_payload, pc_bytes, 128)
 
     -- 2. DUAL-DISPATCH ROUTER
     if render_mode == Renderer.RenderMode.C_HOST then

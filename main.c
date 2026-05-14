@@ -238,25 +238,28 @@ typedef struct {
 _Static_assert(sizeof(PushConstants) == 128, "PushConstants MUST be exactly 128 bytes!");
 
 typedef struct __attribute__((packed, aligned(16))) {
-    VkCommandBuffer cmd;
-    uint64_t comp_pipeline;
-    uint64_t comp_layout;
-    uint64_t gfx_pipeline;
-    uint64_t gfx_layout;
-    uint64_t desc_set;
-    uint64_t vertex_buffer;
-    uint64_t swapchain_image;
-    uint64_t swapchain_view;
-    uint64_t depth_image;
-    uint64_t depth_view;
-    uint32_t width;
-    uint32_t height;
-    PushConstants* pc; // <-- CHANGED TO POINTER!
-} RenderPacket;
+        VkCommandBuffer cmd;                 // (Or VkCommandBuffer cmd; in main.c)
+        uint64_t comp_pipeline;
+        uint64_t comp_layout;
+        uint64_t gfx_pipeline;
+        uint64_t gfx_layout;
+        uint64_t desc_set;
+        uint64_t vertex_buffer;
+        uint64_t swapchain_image;
+        uint64_t swapchain_view;
+        uint64_t depth_image;
+        uint64_t depth_view;
+        uint32_t width;
+        uint32_t height;
+        uint8_t pc_payload[128];   // THE NEW RAW PAYLOAD
+    } RenderPacket;
 
 EXPORT void vibe_record_commands(RenderPacket* p, PFN_vkCmdBeginRenderingKHR pfnBegin, PFN_vkCmdEndRenderingKHR pfnEnd) {
     VkCommandBufferBeginInfo beginInfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     vkBeginCommandBuffer(p->cmd, &beginInfo);
+
+    // 1. Local struct cast for easy reading
+    PushConstants* local_pc = (PushConstants*)p->pc_payload;
 
     // --- COMPUTE PASS ---
     vkCmdBindPipeline(p->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipeline)p->comp_pipeline);
@@ -264,11 +267,11 @@ EXPORT void vibe_record_commands(RenderPacket* p, PFN_vkCmdBeginRenderingKHR pfn
     VkDescriptorSet dset = (VkDescriptorSet)p->desc_set;
     vkCmdBindDescriptorSets(p->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipelineLayout)p->comp_layout, 0, 1, &dset, 0, NULL);
 
-    // Pass the pointer directly
-    vkCmdPushConstants(p->cmd, (VkPipelineLayout)p->comp_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), p->pc);
+    // 2. Push the raw byte array
+    vkCmdPushConstants(p->cmd, (VkPipelineLayout)p->comp_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, 128, p->pc_payload);
 
-    // Use -> operator to read particle_count
-    uint32_t workgroups = (p->pc->particle_count + 255) / 256;
+    // 3. Read from the local cast
+    uint32_t workgroups = (local_pc->particle_count + 255) / 256;
     vkCmdDispatch(p->cmd, workgroups, 1, 1);
 
     VkMemoryBarrier compBarrier = {
@@ -337,11 +340,11 @@ EXPORT void vibe_record_commands(RenderPacket* p, PFN_vkCmdBeginRenderingKHR pfn
     VkBuffer vbo = (VkBuffer)p->vertex_buffer;
     vkCmdBindVertexBuffers(p->cmd, 0, 1, &vbo, &offset);
 
-    // Pass the pointer directly
-    vkCmdPushConstants(p->cmd, (VkPipelineLayout)p->gfx_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), p->pc);
+    // 4. Push the raw byte array
+    vkCmdPushConstants(p->cmd, (VkPipelineLayout)p->gfx_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, 128, p->pc_payload);
 
-    // Use -> operator to read particle_count
-    vkCmdDraw(p->cmd, p->pc->particle_count, 1, 0, 0);
+    // 5. Draw using the local cast
+    vkCmdDraw(p->cmd, local_pc->particle_count, 1, 0, 0);
 
     pfnEnd(p->cmd);
 
@@ -358,7 +361,6 @@ EXPORT void vibe_record_commands(RenderPacket* p, PFN_vkCmdBeginRenderingKHR pfn
 
     vkEndCommandBuffer(p->cmd);
 }
-// ==============================================================================
 
 void vibe_init_mailbox() {
     atomic_init(&g_engine.mailbox.ready_index, 0);
