@@ -130,6 +130,7 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
     pc.pos_y_idx = 1000000
     pc.pos_z_idx = 2000000
     pc.particle_count = 1000000
+    pc.dt = 0.0 -- Explicitly initialize our time accumulator
 
     local proj = ffi.new("mat4_t")
     local view = ffi.new("mat4_t")
@@ -142,11 +143,15 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
     local cam_pitch = 0.0
     local sensitivity = 0.002
 
-    local speed = 5.0
+    -- THE FIX: Speed is now "Units per Second" instead of "Units per Tick"
+    local move_speed = 1000.0
 
     local is_resizing = false
     local last_resize_time = 0.0
     local RESIZE_COOLDOWN = 0.25
+
+    -- THE FIX: Start the real-world clock
+    local last_time = os.clock()
 
     while ffi.C.vibe_get_is_running() == 1 do
 
@@ -212,11 +217,12 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
                         wsi.in_flight[i]       = sync_state.inFlight[i]
                     end
 
-                    wsi.vkWaitForFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkWaitForFences"))
-                    wsi.vkAcquireNextImageKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkAcquireNextImageKHR"))
-                    wsi.vkResetFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkResetFences"))
-                    wsi.vkQueueSubmit = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkQueueSubmit"))
-                    wsi.vkQueuePresentKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkQueuePresentKHR"))
+                    -- !!! FIXED TYPO: Using 'device' instead of 'vk_state.instance' !!!
+                    wsi.vkWaitForFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkWaitForFences"))
+                    wsi.vkAcquireNextImageKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkAcquireNextImageKHR"))
+                    wsi.vkResetFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkResetFences"))
+                    wsi.vkQueueSubmit = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkQueueSubmit"))
+                    wsi.vkQueuePresentKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkQueuePresentKHR"))
                     wsi.pfnBegin = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR"))
                     wsi.pfnEnd = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"))
 
@@ -226,8 +232,16 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
 
                 print("[LUA CO] Rebuild Complete. Resuming Weaver.")
                 is_resizing = false
+
+                -- THE FIX: Prevent massive time jump after the rebuild lag
+                last_time = os.clock()
             end
         else
+            -- THE FIX: Calculate real-world delta time (dt)
+            local current_time = os.clock()
+            local dt = current_time - last_time
+            last_time = current_time
+
             -- Input Polling & Camera Math
             local dx = ffi.C.vibe_get_mouse_dx()
             local dy = ffi.C.vibe_get_mouse_dy()
@@ -243,29 +257,33 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
             local right_x = math.cos(cam_yaw)
             local right_z = -math.sin(cam_yaw)
 
-            if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * speed; cam_pos.y = cam_pos.y + fwd_y * speed; cam_pos.z = cam_pos.z + fwd_z * speed end
-            if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * speed; cam_pos.y = cam_pos.y - fwd_y * speed; cam_pos.z = cam_pos.z - fwd_z * speed end
-            if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * speed; cam_pos.z = cam_pos.z - right_z * speed end
-            if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * speed; cam_pos.z = cam_pos.z + right_z * speed end
-            if bit.band(wasd, 16) ~= 0 then cam_pos.y = cam_pos.y + speed end
-            if bit.band(wasd, 32) ~= 0 then cam_pos.y = cam_pos.y - speed end
+            -- THE FIX: Scale the speed by the fraction of a second that passed
+            local frame_speed = move_speed * dt
+
+            if bit.band(wasd, 1) ~= 0 then cam_pos.x = cam_pos.x + fwd_x * frame_speed; cam_pos.y = cam_pos.y + fwd_y * frame_speed; cam_pos.z = cam_pos.z + fwd_z * frame_speed end
+            if bit.band(wasd, 2) ~= 0 then cam_pos.x = cam_pos.x - fwd_x * frame_speed; cam_pos.y = cam_pos.y - fwd_y * frame_speed; cam_pos.z = cam_pos.z - fwd_z * frame_speed end
+            if bit.band(wasd, 4) ~= 0 then cam_pos.x = cam_pos.x - right_x * frame_speed; cam_pos.z = cam_pos.z - right_z * frame_speed end
+            if bit.band(wasd, 8) ~= 0 then cam_pos.x = cam_pos.x + right_x * frame_speed; cam_pos.z = cam_pos.z + right_z * frame_speed end
+            if bit.band(wasd, 16) ~= 0 then cam_pos.y = cam_pos.y + frame_speed end
+            if bit.band(wasd, 32) ~= 0 then cam_pos.y = cam_pos.y - frame_speed end
 
             vmath.lookAt(cam_pos.x, cam_pos.y, cam_pos.z,
                          cam_pos.x + fwd_x, cam_pos.y + fwd_y, cam_pos.z + fwd_z,
                          view)
 
-            pc.dt = frame_count * 0.005;
+            -- THE FIX: Smoothly accumulate real-world time for the shader
+            pc.dt = pc.dt + dt
             vmath.multiply_mat4(proj, view, pc.viewProj)
 
             local success = renderer.ExecuteFrame(
-                sc_state,
-                master_buf,
-                comp_state,
-                gfx_state,
-                pc,
+                sc_state, 
+                memory.Buffers["MASTER_GPU_BLOCK"], 
+                comp_state, 
+                gfx_state, 
+                pc, 
                 desc_state
             )
-            -- If Vulkan natively flags a resize (e.g. Windows snapped the window), trigger the cooldown
+
             if not success then
                 print("[RENDERER] VK_ERROR_OUT_OF_DATE_KHR Triggered! Forcing Rebuild Protocol.")
                 is_resizing = true
