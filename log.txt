@@ -12,7 +12,7 @@ $ ./boot.exe
 [LUA] Window Surface Linked from Main Thread!
 [LUA] Hardware GPU Selected!
 [LUA] Logical Device Created!
-[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x01ce420faa58
+[DEBUG] Device Pointer in core:         cdata<struct VkDevice_T *>: 0x02d1d2f84ae8
 [MEMORY] ReBAR Supported! Streaming directly to VRAM.
 [MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (256.00 MB)
 [SWAPCHAIN] Building the display chain...
@@ -26,8 +26,11 @@ $ ./boot.exe
 [FACTORY] Forging Triple-Buffered Command Matrix...
 [RENDERER] Forging Synchronization Primitives...
 [LUA CO] Render Fiber Weaving...
-
-[LUA FATAL ERROR] main.lua:105: FATAL: FIBER CRASH -> .\renderer.lua:189: 'struct 3664' has no member named 'pipeline'
 [C-CORE] Async Render Thread Online.
-[LUA-OS-THREAD] VM Destroyed.
+[LUA IO] ESCAPE PRESSED. Executing Teardown...
 
+[C-CORE] Shutdown triggered. Waiting for Lua VM...
+[LUA-OS-THREAD] VM Destroyed.
+[C-CORE] Clean Exit.
+
+AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/lua_engine
