@@ -88,7 +88,20 @@ double last_mx = 0.0, last_my = 0.0;
 bool first_mouse = true;
 
 void glfw_cursor_callback(GLFWwindow* window, double xpos, double ypos) {
-    if (first_mouse) { last_mx = xpos; last_my = ypos; first_mouse = false; return; }
+    // 1. THE GATEKEEPER: If the mouse is free, swallow the movement
+    if (!s_mouse_captured) {
+        last_mx = xpos;
+        last_my = ypos;
+        return;
+    }
+    // 2. Prevent the massive "snap" on the first frame of capture
+    if (first_mouse) {
+        last_mx = xpos;
+        last_my = ypos;
+        first_mouse = false;
+        return;
+    }
+    // 3. Normal Delta Calculation
     float dx = (float)(xpos - last_mx);
     float dy = (float)(ypos - last_my);
     last_mx = xpos; last_my = ypos;
