@@ -39,8 +39,27 @@ ffi.cdef[[
         uint32_t _padding[11];   // Offset 84 (44 bytes explicit padding)
     } PushConstants;             // Total: 128 bytes
 
-    typedef struct __attribute__((packed, aligned(16))) {
-        void* cmd;                 // (Or VkCommandBuffer cmd; in main.c)
+    // WSI Bridge Struct
+    typedef struct {
+        VkDevice device;
+        VkQueue queue;
+        VkSwapchainKHR swapchain;
+        uint64_t swapchain_images[10];
+        uint64_t swapchain_views[10];
+        VkSemaphore image_available[3];
+        VkSemaphore render_finished[3];
+        VkFence in_flight[3];
+        void* vkWaitForFences;
+        void* vkAcquireNextImageKHR;
+        void* vkResetFences;
+        void* vkQueueSubmit;
+        void* vkQueuePresentKHR;
+        void* pfnBegin;
+        void* pfnEnd;
+    } RenderThreadInit;
+
+    typedef struct __attribute__((packed, aligned(64))) {
+        // REMOVED: void* cmd
         uint64_t comp_pipeline;
         uint64_t comp_layout;
         uint64_t gfx_pipeline;
@@ -53,10 +72,24 @@ ffi.cdef[[
         uint64_t depth_view;
         uint32_t width;
         uint32_t height;
-        uint8_t pc_payload[128];   // THE NEW RAW PAYLOAD
+        uint8_t pc_payload[128];
+        uint8_t _padding[64]; // Padded to exactly 256 bytes for L1 Cache Isolation
     } RenderPacket;
 
+    // The Triad Topology
+    typedef struct {
+        alignas(64) RenderPacket packets[3];
+        alignas(64) _Atomic int ready_idx;
+        alignas(64) _Atomic int read_idx;
+    } RenderRing;
+
     void vibe_record_commands(RenderPacket* p, void* pfnBegin, void* pfnEnd);
+    int vibe_ring_get_write_idx();
+    RenderPacket* vibe_ring_get_packet(int idx);
+    void vibe_ring_submit(int idx);
+    void vibe_ring_init_wsi(RenderThreadInit* wsi);
+    void vibe_start_render_thread();
+    void vibe_kill_render_thread();
 ]]
 
 local active_coroutines = {}
@@ -133,6 +166,10 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
             if (os.clock() - last_resize_time) > RESIZE_COOLDOWN then
                 print("[LUA CO] Window Stable. Initiating Vulkan Rebuild...")
 
+                -- 1. KILL THE CONSUMER THREAD
+                ffi.C.vibe_kill_render_thread()
+
+                -- 2. Wait for the GPU to finish its last breath
                 vk.vkDeviceWaitIdle(device)
 
                 local new_w = ffi.new("int[1]")
@@ -143,18 +180,16 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
                     -- 3. Teardown old dependent pipelines & Sync
                     graphics.Destroy(vk, vk_state, gfx_state)
                     swapchain_core.Destroy(vk, vk_state, sc_state)
-                    renderer.Destroy(vk, device, sync_state, 3) -- <--- ADD THIS: Nuke cocked semaphores
+                    renderer.Destroy(vk, device, sync_state, 3)
 
                     -- 4. Re-forge the chain
                     sc_state = swapchain_core.Init(vk, vk_state, new_w[0], new_h[0])
                     gfx_state = graphics.Init(vk, vk_state, new_w[0], new_h[0], desc_state.pipelineLayout, sc_state.format)
 
-                    -- <--- ADD THIS: Rebuild sync and patch the existing table
                     local fresh_sync = renderer.InitSync(vk, device, 3)
                     sync_state.imageAvailable = fresh_sync.imageAvailable
                     sync_state.renderFinished = fresh_sync.renderFinished
                     sync_state.inFlight       = fresh_sync.inFlight
-                    -- --------------------------------------------------------
 
                     -- 5. Update Frame State (Viewport/Scissor)
                     frame_state.viewport[0].width = new_w[0]
@@ -164,23 +199,42 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
                     frame_state.renderInfo[0].renderArea.extent.width = new_w[0]
                     frame_state.renderInfo[0].renderArea.extent.height = new_h[0]
 
-                    -- 6. Recalculate Projection Aspect Ratio safely
                     local safe_h = math.max(1, new_h[0])
                     aspect = new_w[0] / safe_h
                     vmath.perspective_inf_revz(70.0, aspect, 0.1, proj)
+
+                    -- 6. REBOOT THE C-THREAD WITH THE NEW WSI POINTERS
+                    local wsi = ffi.new("RenderThreadInit")
+                    wsi.device = device
+                    wsi.queue = queue
+                    wsi.swapchain = sc_state.handle
+
+                    for i=0, sc_state.imageCount-1 do
+                        wsi.swapchain_images[i] = ffi.cast("uint64_t", sc_state.images[i])
+                        wsi.swapchain_views[i]  = ffi.cast("uint64_t", sc_state.imageViews[i])
+                    end
+                    for i=0, 2 do
+                        wsi.image_available[i] = sync_state.imageAvailable[i]
+                        wsi.render_finished[i] = sync_state.renderFinished[i]
+                        wsi.in_flight[i]       = sync_state.inFlight[i]
+                    end
+
+                    wsi.vkWaitForFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkWaitForFences"))
+                    wsi.vkAcquireNextImageKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkAcquireNextImageKHR"))
+                    wsi.vkResetFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkResetFences"))
+                    wsi.vkQueueSubmit = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkQueueSubmit"))
+                    wsi.vkQueuePresentKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkQueuePresentKHR"))
+                    wsi.pfnBegin = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR"))
+                    wsi.pfnEnd = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"))
+
+                    ffi.C.vibe_ring_init_wsi(wsi)
+                    ffi.C.vibe_start_render_thread()
                 end
 
                 print("[LUA CO] Rebuild Complete. Resuming Weaver.")
                 is_resizing = false
             end
         else
-            -- 1. NORMAL FRAME RENDER (Skipped if Resizing)
-            local inFlightFence = sync_state.inFlight[cmd_state.current_frame]
-            local TIMEOUT_MAX = ffi.cast("uint64_t", -1)
-            vk.vkWaitForFences(device, 1, ffi.new("VkFence[1]", {inFlightFence}), 1, TIMEOUT_MAX)
-
-            cmd_factory.ResetCurrentFrame(vk, device, cmd_state)
-
             -- Input Polling & Camera Math
             local dx = ffi.C.vibe_get_mouse_dx()
             local dy = ffi.C.vibe_get_mouse_dy()
@@ -210,14 +264,9 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
             pc.dt = frame_count * 0.005;
             vmath.multiply_mat4(proj, view, pc.viewProj)
 
-            local cmd_buffer = cmd_factory.AllocateBuffer(vk, device, cmd_state)
-
             local success = renderer.ExecuteFrame(
-                vk, device, queue, sc_state, cmd_buffer,
-                cmd_state.current_frame, sync_state, frame_state,
-                master_buf, comp_state, gfx_state, pc, desc_state,
-                renderer.RenderMode.LUA_NATIVE  -- <-- Swap this to C_HOST whenever you want!
-                -- renderer.RenderMode.C_HOST
+                swapchain, sync_state, frame_state,
+                master_buf, comp_state, gfx_state, pc, desc_state
             )
             -- If Vulkan natively flags a resize (e.g. Windows snapped the window), trigger the cooldown
             if not success then
@@ -226,7 +275,6 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
                 last_resize_time = os.clock()
             end
 
-            cmd_factory.AdvanceFrame(cmd_state)
             frame_count = frame_count + 1
         end
 
@@ -272,7 +320,36 @@ local function command_glfw_fiber()
     local sync_state = renderer.InitSync(vk, device, 3)
     local frame_state = renderer.AllocateFrameState(vk, device, sc_state.extent.width, sc_state.extent.height)
 
-    -- THE FIX: Pass vk_state directly, remove the standalone device and vk_state.queue args
+    -- ====================================================================
+    -- THE ASYNC HANDOFF: Pack the WSI Bridge and boot the C-Thread
+    -- ====================================================================
+    local wsi = ffi.new("RenderThreadInit")
+    wsi.device = device
+    wsi.queue = vk_state.queue
+    wsi.swapchain = sc_state.handle
+
+    for i=0, sc_state.imageCount-1 do
+        wsi.swapchain_images[i] = ffi.cast("uint64_t", sc_state.images[i])
+        wsi.swapchain_views[i]  = ffi.cast("uint64_t", sc_state.imageViews[i])
+    end
+    for i=0, 2 do
+        wsi.image_available[i] = sync_state.imageAvailable[i]
+        wsi.render_finished[i] = sync_state.renderFinished[i]
+        wsi.in_flight[i]       = sync_state.inFlight[i]
+    end
+
+    wsi.vkWaitForFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkWaitForFences"))
+    wsi.vkAcquireNextImageKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkAcquireNextImageKHR"))
+    wsi.vkResetFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkResetFences"))
+    wsi.vkQueueSubmit = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkQueueSubmit"))
+    wsi.vkQueuePresentKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkQueuePresentKHR"))
+    wsi.pfnBegin = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR"))
+    wsi.pfnEnd = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"))
+
+    ffi.C.vibe_ring_init_wsi(wsi)
+    ffi.C.vibe_start_render_thread()
+    -- ====================================================================
+
     start_fiber(function()
         render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame_state, memory.Buffers["MASTER_GPU_BLOCK"], comp_state, gfx_state, desc_state)
     end)
