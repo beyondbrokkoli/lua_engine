@@ -258,8 +258,12 @@ local function render_fiber(vk, vk_state, sc_state, cmd_state, sync_state, frame
             vmath.multiply_mat4(proj, view, pc.viewProj)
 
             local success = renderer.ExecuteFrame(
-                swapchain, sync_state, frame_state,
-                master_buf, comp_state, gfx_state, pc, desc_state
+                sc_state,
+                master_buf,
+                comp_state,
+                gfx_state,
+                pc,
+                desc_state
             )
             -- If Vulkan natively flags a resize (e.g. Windows snapped the window), trigger the cooldown
             if not success then

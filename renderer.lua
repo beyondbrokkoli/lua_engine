@@ -176,14 +176,10 @@ function Renderer.AllocateFrameState(vk, device, width, height)
     return state
 end
 
-function Renderer.ExecuteFrame(
-    swapchain, current_frame, sync_state, f_state, unified_buffer, p_compute, p_gfx, pc_bytes, desc_state
-)
-    -- 1. Triad Lock-Free Acquisition
+function Renderer.ExecuteFrame(swapchain, unified_buffer, p_compute, p_gfx, pc_bytes, desc_state)
     local write_idx = ffi.C.vibe_ring_get_write_idx()
     local packet = ffi.C.vibe_ring_get_packet(write_idx)
 
-    -- 2. Populate Static Environment
     packet.comp_pipeline = ffi.cast("uint64_t", p_compute.pipeline)
     packet.comp_layout   = ffi.cast("uint64_t", p_compute.pipelineLayout)
     packet.gfx_pipeline  = ffi.cast("uint64_t", p_gfx.pipeline)
@@ -195,13 +191,11 @@ function Renderer.ExecuteFrame(
     packet.width         = swapchain.extent.width
     packet.height        = swapchain.extent.height
 
-    -- 3. The 128-byte AVX-safe Blast
     ffi.copy(packet.pc_payload, pc_bytes, 128)
-
-    -- 4. Triad Publish
     ffi.C.vibe_ring_submit(write_idx)
     return true
 end
+
 function Renderer.Destroy(vk, device, sync, frames_in_flight)
     print("[TEARDOWN] Dismantling Renderer Sync Objects...")
     vk.vkDeviceWaitIdle(device)
