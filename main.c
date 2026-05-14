@@ -281,12 +281,12 @@ typedef struct {
     alignas(64) _Atomic int read_idx;
 } RenderRing;
 static RenderRing g_ring = {
-    .ready_idx = ATOMIC_VAR_INIT(-1),
-    .read_idx = ATOMIC_VAR_INIT(-1)
+    .ready_idx = -1,
+    .read_idx = -1
 };
 static RenderThreadInit g_wsi;
 static vmath_thread_t g_render_thread;
-static atomic_int g_render_thread_active = ATOMIC_VAR_INIT(0);
+static atomic_int g_render_thread_active = 0;
 
 EXPORT void vibe_ring_init_wsi(RenderThreadInit* wsi) {
     g_wsi = *wsi;
@@ -420,7 +420,7 @@ EXPORT void vibe_record_commands(VkCommandBuffer cmd, RenderPacket* p, PFN_vkCmd
 }
 THREAD_FUNC render_thread_loop(void* arg) {
     printf("[C-CORE] Async Render Thread Online.\n");
-    
+
     // 1. C-Owned Command Pool Setup
     VkCommandPool cmd_pool;
     VkCommandPoolCreateInfo pool_info = {
