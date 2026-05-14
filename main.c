@@ -379,9 +379,14 @@ int main(int argc, char** argv) {
             glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
             window = glfwCreateWindow(w, h, "VibeEngine Remote", NULL, NULL);
             glfwSetWindowSizeLimits(window, 640, 360, GLFW_DONT_CARE, GLFW_DONT_CARE);
-            // Force OS context switch to the new window
+
+            // --- THE WINDOWS FOCUS OVERRIDE HACK ---
             glfwShowWindow(window);
-            glfwFocusWindow(window);
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);  // Force OS to overlay it
+            glfwFocusWindow(window);                                // Grab the input lock
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE); // Sink it back to normal
+            glfwPollEvents();                                       // Flush the OS event queue instantly
+
             glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
             glfwSetKeyCallback(window, glfw_key_callback);
 
