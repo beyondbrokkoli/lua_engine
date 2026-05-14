@@ -331,11 +331,11 @@ local function command_glfw_fiber()
         wsi.in_flight[i]       = sync_state.inFlight[i]
     end
 
-    wsi.vkWaitForFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkWaitForFences"))
-    wsi.vkAcquireNextImageKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkAcquireNextImageKHR"))
-    wsi.vkResetFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkResetFences"))
-    wsi.vkQueueSubmit = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkQueueSubmit"))
-    wsi.vkQueuePresentKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(vk_state.instance, "vkQueuePresentKHR"))
+    wsi.vkWaitForFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkWaitForFences"))
+    wsi.vkAcquireNextImageKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkAcquireNextImageKHR"))
+    wsi.vkResetFences = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkResetFences"))
+    wsi.vkQueueSubmit = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkQueueSubmit"))
+    wsi.vkQueuePresentKHR = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkQueuePresentKHR"))
     wsi.pfnBegin = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR"))
     wsi.pfnEnd = ffi.cast("void*", vk.vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"))
 
