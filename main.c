@@ -86,6 +86,7 @@ EXPORT int vibe_get_last_key() {
 
 double last_mx = 0.0, last_my = 0.0;
 bool first_mouse = true;
+static bool s_mouse_captured = false;
 
 void glfw_cursor_callback(GLFWwindow* window, double xpos, double ypos) {
     // 1. THE GATEKEEPER: If the mouse is free, swallow the movement
@@ -113,7 +114,6 @@ void glfw_cursor_callback(GLFWwindow* window, double xpos, double ypos) {
     while (!atomic_compare_exchange_weak_explicit(&g_engine.mailbox.mouse_dy, &current_dy, current_dy + dy, memory_order_release, memory_order_relaxed));
 }
 
-static bool s_mouse_captured = false;
 void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         if (!s_mouse_captured) {
