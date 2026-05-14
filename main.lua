@@ -76,13 +76,6 @@ ffi.cdef[[
         uint8_t _padding[64]; // Padded to exactly 256 bytes for L1 Cache Isolation
     } RenderPacket;
 
-    // The Triad Topology
-    typedef struct {
-        alignas(64) RenderPacket packets[3];
-        alignas(64) _Atomic int ready_idx;
-        alignas(64) _Atomic int read_idx;
-    } RenderRing;
-
     void vibe_record_commands(RenderPacket* p, void* pfnBegin, void* pfnEnd);
     int vibe_ring_get_write_idx();
     RenderPacket* vibe_ring_get_packet(int idx);
