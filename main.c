@@ -100,6 +100,16 @@ void glfw_cursor_callback(GLFWwindow* window, double xpos, double ypos) {
     while (!atomic_compare_exchange_weak_explicit(&g_engine.mailbox.mouse_dy, &current_dy, current_dy + dy, memory_order_release, memory_order_relaxed));
 }
 
+static bool s_mouse_captured = false;
+void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        if (!s_mouse_captured) {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            s_mouse_captured = true;
+            first_mouse = true; // Reset mouse delta to prevent camera snapping
+        }
+    }
+}
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS || action == GLFW_RELEASE) {
         uint32_t bit = 0;
@@ -115,7 +125,14 @@ void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, in
         }
     }
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        atomic_store_explicit(&g_engine.mailbox.last_key_pressed, GLFW_KEY_ESCAPE, memory_order_release);
+        if (s_mouse_captured) {
+            // Stage 1: Free the mouse
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            s_mouse_captured = false;
+        } else {
+            // Stage 2: Trigger Shutdown if mouse is already free
+            atomic_store_explicit(&g_engine.mailbox.last_key_pressed, GLFW_KEY_ESCAPE, memory_order_release);
+        }
     }
 }
 
@@ -389,9 +406,8 @@ int main(int argc, char** argv) {
 
             glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
             glfwSetKeyCallback(window, glfw_key_callback);
-
             glfwSetCursorPosCallback(window, glfw_cursor_callback);
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            glfwSetMouseButtonCallback(window, glfw_mouse_button_callback);
 
             int fb_w, fb_h;
             glfwGetFramebufferSize(window, &fb_w, &fb_h);
