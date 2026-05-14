@@ -379,6 +379,9 @@ int main(int argc, char** argv) {
             glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
             window = glfwCreateWindow(w, h, "VibeEngine Remote", NULL, NULL);
             glfwSetWindowSizeLimits(window, 640, 360, GLFW_DONT_CARE, GLFW_DONT_CARE);
+            // Force OS context switch to the new window
+            glfwShowWindow(window);
+            glfwFocusWindow(window);
             glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
             glfwSetKeyCallback(window, glfw_key_callback);
 
